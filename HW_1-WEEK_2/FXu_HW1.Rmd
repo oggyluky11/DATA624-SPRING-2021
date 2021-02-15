@@ -1,0 +1,382 @@
+---
+title: "DATA 624 - HOMEWORK 1"
+author: "FAN XU"
+date: "2/14/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: yes
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+library(readxl)
+library(rio)
+library(gridExtra)
+library(ggpubr)
+library(TSstudio)
+
+```
+
+
+# Question - 2.1
+
+**Use the help function to explore what the series `gold` , `woolyrnq` and `gas` represent.**
+
+1) `gold`
+```{r help function - gold, message=FALSE, warning=FALSE}
+?gold
+```
+<center>![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/GOLD.PNG)</center>
+
+2) `woolyrnq`
+```{r help function - woolyrnq, message=TRUE, warning=FALSE}
+?woolyrnq
+```
+<center>![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/WOOLYRNQ.PNG)</center>
+
+3) `gas`
+```{r help function - gas, message=FALSE, warning=FALSE}
+?gas
+```
+<center>![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/GAS.PNG)</center>
+
+
+## a. 
+
+**Use `autoplot()` to plot each of these in separate plots.**
+
+
+
+1) `gold`
+```{r autoplot - gold}
+autoplot(gold) +
+  ylab('Price in US Dollars') +
+  ggtitle('Time Series Autoplot: gold\nDaily Morning Gold Prices')
+```
+
+2) `woolyrnq`
+```{r autoplot - woolyrnq}
+autoplot(woolyrnq)  +
+  ylab('Woollen Yarn Production in Tonnes') +
+  ggtitle('Time Series Autoplot: woolyrng\nQuarterly Production of Woollen Yarn in Australia')
+```
+
+3) `gas`
+```{r autoplot - gas}
+autoplot(gas) +
+  ylab('Gas Production') +
+  ggtitle('Time Series Autoplot: gas\nAustralian Monthly Gas Production')
+```
+
+
+## b.
+**What is the frequency of each series? Hint: apply the `frequency()` function.**
+
+
+1) `gold`
+
+**Answer:** Frequency: Daily
+```{r frequency - gold}
+frequency(gold)
+```
+
+2) `woolyrnq`
+
+**Answer:** Frequency: Quarterly
+```{r frequency - woolyrnq}
+frequency(woolyrnq)
+```
+
+3) `gas`
+
+**Answer:** Frequency: Monthly
+```{r frequency - gas}
+frequency(gas)
+```
+
+
+## c.
+**Use which.max() to spot the outlier in the gold series. Which observation was it?**
+
+1) `gold`
+
+**Answer:**  The outlier is the 770th observation,  the value is 593.7.
+```{r outlier - gold}
+which.max(gold)
+gold[which.max(gold)]
+```
+
+# Question - 2.2
+Download the file `tute1.csv` from the book website, open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled Sales, AdBudget and GDP. Sales contains the quarterly sales for a small company over the period 1981-2005. AdBudget is the advertising budget and GDP is the gross domestic product. All series have been adjusted for inflation.
+
+Open it in Excel:
+<center>![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/Tute1inExcel.PNG)</center>
+
+## a. 
+**You can read the data into R with the following script:**
+```{r read data}
+tute1 <- read.csv('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/tute1.csv', header = TRUE)
+
+#view(tute1)
+tute1
+```
+
+
+## b. 
+**Convert the data to time series**
+```{r convert to ts}
+mytimeseries <- ts(tute1[,-1], start=1981, frequency=4)
+
+head(mytimeseries)
+```
+
+## c. 
+**Construct time series plots of each of the three series**
+```{r autoplot with facets}
+autoplot(mytimeseries, facets=TRUE)
+```
+
+**Check what happens when you don't include `facets=TRUE`**
+```{r autoplot without facets}
+autoplot(mytimeseries)
+```
+
+# Question - 2.3
+Download some monthly Australian retail data from the book website. These represent retail sales in various categories for di􀁼erent Australian states, and are stored in a MS-Excel file.
+
+## a.
+**You can read the data into R with the following script:**
+```{r read data 2}
+#retaildata <- read_excel('retail.xlsx', skip=1)
+retaildata <- import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/retail.xlsx', skip=1)
+
+retaildata
+```
+
+## b.
+**Select one of the time series as follows (but replace the column name with your own chosen column):**
+```{r convert to ts 2}
+myts<- ts(retaildata[,"A3349398A"], frequency=12, start=c(1982,4))
+```
+
+## c.
+**Explore your chosen retail time series using the following functions:**
+`autoplot()`, `ggseasonplot()`, `ggsubseriesplot()`, `gglagplot()`, `ggAcf()`
+
+1) `autoplot()`
+```{r autoplot 2.3}
+autoplot(myts) +
+  ggtitle('Monthly Food Retailing in Australia')
+```
+
+2) `ggseasonplot()`
+```{r ggseasonplot 2.3}
+ggseasonplot(myts)
+ggseasonplot(myts, polar = TRUE) + ggtitle('Seaonal Plot: myts - Polar Coordinate')
+```
+
+
+3) `ggsubseriesplot()`
+```{r ggsubseriesplot 2.3}
+ggsubseriesplot(myts) + ggtitle('Subseries Plot: myts')
+
+```
+
+4) `gglagplot()`
+```{r gglagplot 2.3}
+gglagplot(myts) + ggtitle('Lag Plot: myts')
+
+```
+
+
+5) `ggAcf()`
+```{r ggAcf 2.3}
+ggAcf(myts) + ggtitle('ACF Plot: myts')
+```
+
+
+**Can you spot any seasonality, cyclicity and trend? What do you learn about the series?**
+
+**Answer:**
+
+1. Seasonality can be spotted as shown in the lag plot that there is a strongly positive relationship between sales values and lag values through out lag 1 to lag 16, tipically in lag 12, reflecting very strong seasonality in the data.
+
+2. Trend can be spotted as shown in the ACF plot that trended time series tend to have positive values that slowly decrease as the lags increase. The correlations are significantly different from zero confirming that the fluctuation is not white noise.
+
+3. Cyclicity is not spotted in the autoplot as there is no obvious business cycle with duration of at least 2 years.
+
+4. From the plots above, we learn that this time series has an inscreasing trend and strong monthly seasonality (frequency=12) and with time range from year 1982 to 2013.
+
+
+# Question - 2.6
+
+**Use the following graphics functions: autoplot(), ggseasonplot(), ggsubseriesplot(), gglagplot(), ggAcf() and explore features from the following time series: hsales, usdeaths, bricksq, sunspotarea, gasoline.**
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**b. What do you learn about the series?**
+
+```{r define ts plot group function}
+tsplot <- function(ts){
+  ts_name <- deparse(substitute(ts))
+  snl_err_handle <- function(fn){
+    return(
+      tryCatch({fn},
+               error = function(e){ggplot()+ggtitle('Seasonality plot not applicable') })
+    )
+  }
+return(
+  ggarrange(
+    ggarrange(
+      autoplot(ts)+ggtitle(paste0('autoplot: ',ts_name)),
+      snl_err_handle(ggsubseriesplot(ts)+ggtitle(paste0('ggsubseriesplot: ',ts_name))),
+      ggAcf(ts)+ggtitle(paste0('ACF plot: ',ts_name)),
+      nrow=3
+      ),
+      snl_err_handle(ggseasonplot(ts,polar = TRUE)+ggtitle(paste0('ggseasonplot: ',ts_name))),
+    ncol=2
+  )
+)
+}
+```
+
+
+
+## hsales
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**Answer:**
+
+1. Seasonality can be spotted with peaks at Marchs and troughs at Decembers.
+
+2. Cyclicity can be spotted with business cycle of a period of 6-9 years.
+
+3. There is no apparent trend in the data over this period.
+
+**b. What do you learn about the series?**
+
+**Answer:**
+
+This series has seasonlity of peaks at every Marches and troughs at Decembers; The series also have cyclicity of every 6-9 years, the sales dropped to a trough in year 1975, and increased to a peak in year 1978, then again dropped to a trough in year 1982, then another peak in 1986, then another trough in 1991m then increased again. No apprarent trend is observed over this period.
+
+```{r ts plot hsales}
+tsplot(hsales)
+```
+
+## usdeaths
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**Answer:**
+
+1. Seasonality can be spotted with peaks at Julies and troughs at Februaries.
+
+2. This is no apparent cyclicity in the data over this period.
+
+3. There is no apparent trend in the data over this period.
+
+**b. What do you learn about the series?**
+
+**Answer:**
+
+This series has seasonlity of peaks at every Julies and troughs at Februaries; According to the ACF plot, there is no apparaent decreasing trend of correslations which signals no trend in the data; There is no long-period cycle pattern as well which demostrate no apparent cyclicity during this period.
+
+```{r ts plot usdeaths}
+tsplot(usdeaths)
+```
+
+## bricksq
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**Answer:**
+
+1. Seasonality can be spotted with peaks at Q3s and troughs at Q1s.
+
+2. Cyclicity can be spotted after year 1975 with business cycle of a period of approximately 9 years.
+
+3. Increasing trend is spotted in the data over this period.
+
+**b. What do you learn about the series?**
+
+**Answer:**
+
+This series has seasonlity of peaks at every Q3s and troughs at Q1s; The series also have cyclicity of every 9 years, starting year 1975. The ACF plot shows that the correlations are positive and slowly decreasing which signals an significant trend.
+```{r ts plot bricksq}
+tsplot(bricksq)
+```
+
+## sunspotarea
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**Answer:**
+
+1. Seasonality can not be spotted from the plots.
+
+2. Cyclicity can be spotted with business cycle of a period of approximately 11-13 years.
+
+3. Trend is not significant in the data over this period.
+
+**b. What do you learn about the series?**
+
+**Answer:**
+
+This series does not demostrate apparent seasonlity. However,The series have cyclicity of every 11-13 years according to the autoplot. The ACF plot show no significant trend in the data during this period.
+```{r ts plot sunspotarea}
+tsplot(sunspotarea)
+```
+
+## gasoline
+
+**a. Can you spot any seasonality, cyclicity and trend?**
+
+**Anwer:**
+
+1. Seasonality can be spotted in the ACF plot peaks in end of the years and troughs in middle of years.
+
+2. There is apparent Cyclicity spotted in the data.
+
+3. Trend is spotted in the data over this period.
+
+**b. What do you learn about the series?**
+
+**Answer:**
+
+This series demostrates annual seasonlity with peaks in end of the years and troughs in the middle of years. The series does not demostrate apparent cyclicity. The ACF plot show decreasing of the correlation which demostarte significant trend in the data during this period.
+
+
+
+```{r ts plot gasoline}
+tsplot(gasoline)
+```
