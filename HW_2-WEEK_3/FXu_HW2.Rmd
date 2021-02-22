@@ -1,0 +1,257 @@
+---
+title: "DATA 624 - HOMEWORK 2"
+author: "FAN XU"
+date: "2/21/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: yes
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+library(readxl)
+library(rio)
+library(gridExtra)
+library(ggpubr)
+library(ggthemes)
+#library(TSstudio)
+
+```
+
+
+
+# Question - 3.1
+
+**For the following series, find an appropriate Box-Cox transformation in order to stabilise the variance.**
+
+## `usnetelec`
+![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_2-WEEK_3/usnetelec.PNG)
+```{r 3.1 usnetelec}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(usnetelec)))
+cbind(usnetelec,
+      usnetelec_BoxCox = BoxCox(usnetelec,BoxCox.lambda(usnetelec))) %>%
+  autoplot(facet=TRUE) +
+  xlab('Year') + 
+  ylab('billion kwh') +
+  ggtitle('Annual US net electricity generation (Billion kwh) for 1949-2003') +
+  theme_hc()
+
+```
+
+
+## `usgdp`
+![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_2-WEEK_3/usgdp.PNG)
+```{r 3.1 usgdp}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(usgdp)))
+cbind(usgdp,
+      usgdp_BoxCox = BoxCox(usgdp,BoxCox.lambda(usgdp))) %>%
+  autoplot(facet=TRUE) +
+  xlab('Quarter') + 
+  ylab('GDP') +
+  ggtitle('Quarterly US GDP. 1947:1 - 2006.1') +
+  theme_hc()
+
+```
+
+
+## `mcopper`
+![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_2-WEEK_3/mcopper.PNG)
+```{r 3.1 mcopper}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(mcopper)))
+cbind(mcopper,
+      mcopper_BoxCox = BoxCox(mcopper,BoxCox.lambda(mcopper))) %>%
+  autoplot(facet=TRUE) +
+  xlab('Month') + 
+  ylab('Price') +
+  ggtitle('Monthly copper prices') +
+  theme_hc()
+
+```
+
+
+
+## `enplanements`
+![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_2-WEEK_3/enplanements.PNG)
+```{r 3.1 enplanements}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(enplanements)))
+cbind(enplanements,
+      enplanements_BoxCox = BoxCox(enplanements,BoxCox.lambda(enplanements))) %>%
+  autoplot(facet=TRUE) +
+  xlab('Month') + 
+  ylab('Domestic Revenue Enplanements (millions)') +
+  ggtitle('Monthly US domestic enplanements: 1996-2000') +
+  theme_hc()
+
+```
+
+
+# Question - 3.2
+
+**Why is a Box-Cox transformation unhelpful for the ** `cangas` **data?**
+
+**Answer:** The time series does not have a uniform seasonality. Box-Cox algorithm assumes that the transformed data is highly likely to be normally distributed when SD -> min(SD), however it does not garantee normality after transformation.
+
+![](https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_2-WEEK_3/cangas.PNG)
+```{r 3.2 cangas}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(cangas)))
+cbind(cangas,
+      cangas_BoxCox = BoxCox(cangas,BoxCox.lambda(cangas))) %>%
+  autoplot(facet=TRUE) +
+  xlab('Month') + 
+  ylab('Gas Production (billions of cubic metres)') +
+  ggtitle('Monthly Canadian gas production: 1960.1.-2005.2.') +
+  theme_hc()
+
+```
+
+
+# Question - 3.3
+
+**What Box-Cox transformation would you select for your retail data (from Exercise 3 in Section 2.10)?**
+
+## Read data from Ex 2.3
+```{r read data from 2.3}
+#retaildata <- read_excel('retail.xlsx', skip=1)
+retaildata <- import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/retail.xlsx', skip=1)
+
+```
+
+## Select column `A3349398A`
+```{r convert to ts 2}
+myts<- ts(retaildata[,"A3349398A"], frequency=12, start=c(1982,4))
+```
+
+
+## Calculate Best Lambda
+
+**Answer:** The best value for Lambda is 0.123156269082221 using `BoxCox.lambda` function. For better interpretation, I would prefer rounding the value to 1 decimal which is 0.1.
+```{r 3.3 lambda}
+print(paste0('Box-Cox Lambda: ',BoxCox.lambda(myts)))
+cbind(myts,
+      myts_BoxCox = BoxCox(myts,BoxCox.lambda(myts))) %>%
+  autoplot(facet=TRUE) +
+  ggtitle('Monthly Food Retailing in Australia') +
+  theme_hc()
+
+```
+
+
+
+# Question - 3.8
+
+**For your retail time series (from Exercise 3 in Section 2.10):**
+
+## a.
+
+**Split the data into two parts using.**
+
+```{r 3.8 a}
+myts.train <- window(myts, end=c(2010,12))
+myts.test <- window(myts, start=2011)
+
+```
+
+## b.
+**Check that your data have been split appropriately by producing the following plot.**
+
+```{r 3.8 b}
+autoplot(myts) +
+  autolayer(myts.train, series="Training") +
+  autolayer(myts.test, series="Test")
+```
+
+
+## c.
+
+**Calculate forecasts using snaive applied to **`myts.train`.
+
+```{r 3.8 c}
+fc <- snaive(myts.train)
+```
+
+## d.
+**Compare the accuracy of your forecasts against the actual values stored in **`myts.test`.
+```{r 3.8 d}
+accuracy(fc,myts.test)
+```
+
+
+## e.
+
+**Check the residuals.**
+```{r 3.9 e}
+checkresiduals(fc)
+
+```
+
+
+**Do the residuals appear to be uncorrelated and normally distributed?**
+
+**Answer:** The residuals does not appear to be uncorrelated and normally distributed.
+
+  1. From the autoplot, the variation of residuals gets larger as time expends. 
+  
+  2. The ACF plot demostrates significant auto correlation. 
+  
+  3. The histogram shows right screwed distribution.
+  
+## f.
+**How sensitive are the accuracy measures to the training/test split?**
+
+**Answer:** The plot below shows the accuracy metrics of both training set and test set with train-test-split cut off points from year 1985 to 2010. It shows that the metrics of training set are relatively unsensitive, however those of test set are very sensitive to train-test-split cutting point.
+
+```{r 3.9 f 1}
+acc_df <- data.frame()
+for (year in seq(1985, 2010)){
+  myts.train <- window(myts, end=c(year-1,12))
+  myts.test <- window(myts, start=year)
+  fc <- snaive(myts.train)
+  acc_year <- accuracy(fc,myts.test) %>%
+    data.frame() %>%
+    rownames_to_column()
+  acc_df <- acc_df %>% rbind(cbind(year, acc_year))
+  
+}
+acc_df %>% 
+  rename(Data_Type = rowname) %>%
+  select(year, Data_Type, RMSE, MAE, MAPE, MASE) %>%
+  gather(key = 'Acc_Metrics', value = 'Value', -year, -Data_Type) %>%
+  ggplot(aes(x = year, y = Value)) +
+  geom_line() +
+  facet_grid(Acc_Metrics~Data_Type, scales = 'free_y') +
+  theme_hc() +
+  ylab('Accuracy Metrics') +
+  xlab('Train-Test-Split Cutting Point (year)') +
+  ggtitle('Accuracy Metrics with different Train-Test-split')
+```
+
+
