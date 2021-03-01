@@ -1,0 +1,251 @@
+---
+title: "DATA 624 - HOMEWORK 3"
+author: "FAN XU"
+date: "2/28/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: yes
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load library, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+library(readxl)
+library(rio)
+library(gridExtra)
+library(ggpubr)
+library(ggthemes)
+library(seasonal)
+
+```
+
+
+
+# Question - 6.2
+
+**The plastics data set consists of the monthly sales (in thousands) of product A for a plastics manufacturer for five years.**
+
+**(a.) Plot the time series of sales of product A. Can you identify seasonal fluctuations and/or a trend-cycle?**
+
+**Answer:** 
+
+The autoplot shows a significantinscreasing trend.
+```{r 6.2 a 1}
+autoplot(plastics) +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Autoplot: Monthly Sales of Plastic Product A") +
+  theme_hc()
+
+```
+
+The ggsubseriesplot presents a significant normal seasonal fluctuations.
+
+```{r 6.2 a 2}
+ggsubseriesplot(plastics) +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("ggsubseriesplot: Monthly Sales of Plastic Product A") +
+  theme_hc()
+
+
+```
+
+**(b.) Use a classical multiplicative decomposition to calculate the trend-cycle and seasonal indices.**
+```{r 6.2 b}
+plastics %>% decompose(type="multiplicative") %>% 
+  autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition of Monthly Sales of Plastic Product A") +
+  theme_hc()
+
+
+```
+
+
+**(c.) Do the results support the graphical interpretation from part a?**
+
+**Answer:** Yes. The result of classical multiplicative decomposition supports the graphical interpretation from part A.
+
+
+
+
+**(d.) Compute and plot the seasonally adjusted data.**
+```{r 6.2 d, message=FALSE, warning=FALSE}
+fit <- plastics %>% decompose(type="multiplicative")
+autoplot(plastics, series="Original Data") +
+  autolayer(trendcycle(fit), series="Trend") +
+  autolayer(seasadj(fit), series="Seasonally Adjusted Data") +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("Monthly Sales of Plastic Product A (Seasonally Adjusted)") +
+  scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Original Data", "Seasonally Adjusted Data", "Trend")) +
+  theme_hc()
+
+
+```
+
+
+
+(e.) Change one observation to be an outlier (e.g., add 500 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+
+**Anwer:**
+
+From the autoplot after multiplicative decomposition, it is obversed that both the trend and seasonal effect got affected after introducting an outline in middle of the TS.
+
+```{r 6.2 e 1, message=FALSE, warning=FALSE}
+plastics_ol1 <- plastics
+plastics_ol1[31] <- 500
+
+fit_ol1 <- plastics_ol1 %>% decompose(type="multiplicative")
+grid.arrange(
+  plastics_ol1 %>% decompose(type="multiplicative") %>%
+    autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition \n(Outliner in Middle)") +
+    theme_hc(),
+  plastics %>% decompose(type="multiplicative") %>%
+    autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition") +
+    theme_hc(),
+  ncol = 2)
+
+```
+
+However after seasonality adjustment, the adjusted data still greatly affected by the outliner in the middle of the TS.
+
+```{r 6.2 e 2, message=FALSE, warning=FALSE}
+grid.arrange(
+  autoplot(plastics_ol1, series="Original Data") +
+    autolayer(trendcycle(fit_ol1), series="Trend") +
+    autolayer(seasadj(fit_ol1), series="Seasonally Adjusted Data") +
+    xlab("Year") + ylab("Sales") +
+    ggtitle("Monthly Sales(Outliner in Middle)") +
+    scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Original Data", "Seasonally Adjusted Data", "Trend")) +
+    theme_hc()+
+    ylim(500, 1750),
+  autoplot(plastics, series="Original Data") +
+    autolayer(trendcycle(fit), series="Trend") +
+    autolayer(seasadj(fit), series="Seasonally Adjusted Data") +
+    xlab("Year") + ylab("Sales") +
+    ggtitle("Monthly Sales") +
+    scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Original Data", "Seasonally Adjusted Data", "Trend")) +
+    theme_hc() +
+    ylim(500, 1750),
+  ncol = 2)
+
+```
+
+
+**(f.) Does it make any difference if the outlier is near the end rather than in the middle of the time series?**
+
+**Answer:** The outlier near the end has less effect on both the trend and seasonal fluctuation than that in the middle of the TS.
+
+```{r 6.2 f 1, message=FALSE, warning=FALSE}
+plastics_ol2 <- plastics
+plastics_ol2[58] <- 500
+
+fit_ol2 <- plastics_ol2 %>% decompose(type="multiplicative")
+grid.arrange(
+  plastics_ol2 %>% decompose(type="multiplicative") %>%
+    autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition \n(Outliner at the end)") +
+    theme_hc(),
+  plastics %>% decompose(type="multiplicative") %>%
+    autoplot() + xlab("Year") +
+  ggtitle("Classical Multiplicative Decomposition") +
+    theme_hc(),
+  ncol = 2)
+
+```
+
+
+
+
+
+```{r 6.2 f 2, message=FALSE, warning=FALSE}
+grid.arrange(
+  autoplot(plastics_ol2, series="Original Data") +
+    autolayer(trendcycle(fit_ol2), series="Trend") +
+    autolayer(seasadj(fit_ol2), series="Seasonally Adjusted Data") +
+    xlab("Year") + ylab("Sales") +
+    ggtitle("Monthly Sales(Outliner in Middle)") +
+    scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Original Data", "Seasonally Adjusted Data", "Trend")) +
+    theme_hc()+
+    ylim(500, 1750),
+  autoplot(plastics, series="Original Data") +
+    autolayer(trendcycle(fit), series="Trend") +
+    autolayer(seasadj(fit), series="Seasonally Adjusted Data") +
+    xlab("Year") + ylab("Sales") +
+    ggtitle("Monthly Sales") +
+    scale_color_manual(values=c("gray", "blue", "red"), 
+                     breaks=c("Original Data", "Seasonally Adjusted Data", "Trend")) +
+    theme_hc() +
+    ylim(500, 1750),
+  ncol = 2)
+
+```
+
+
+# Question - 6.3
+
+**Recall your retail time series data (from Exercise 3 in Section 2.10).**
+
+**Decompose the series using X11. Does it reveal any outliers, or unusual features that you had not noticed previously?**
+
+
+**Answer:**
+
+From the X11 decomposition remainder graph, it is observed there are multiple up or down spikes, which are possible outliners.
+
+
+
+```{r 6.3 1}
+data <- import("https://raw.githubusercontent.com/shirley-wong/Data-624/main/HW1/retail.xlsx", skip=1) 
+
+
+myts <- ts(data[,"A3349398A"], frequency=12, start=c(1982,4))
+autoplot(myts) +
+  ggtitle("Monthly Food Retailing in Australia") +
+  xlab("Year") + 
+  ylab("Sales") +
+  theme_hc()
+
+```
+
+
+```{R 6.3 2}
+#x11 decomposition
+fit <- myts %>% seas(x11="")
+autoplot(fit, series="Data") +
+  xlab("Year") + ylab("Sales") +
+  ggtitle("X11 Decomposition of Monthly Food Retailing in Australia")
+
+```
