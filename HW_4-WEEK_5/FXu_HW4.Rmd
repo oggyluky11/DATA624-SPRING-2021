@@ -1,0 +1,276 @@
+---
+title: "DATA 624 - HOMEWORK 4"
+author: "Fan Xu"
+date: "03/07/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: show
+    df_print: paged
+    highlight: tango
+    number_sections: yes
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  html_notebook: default
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r load package, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(corrplot)
+library(missForest)
+library(ggthemes)
+library(psych)
+library(naniar)
+library(DMwR)
+```
+
+
+# Question - 3.1
+**The [UC Irvine Machine Learning Repository](http://archive.ics.uci.edu/ml/index.html) contains a data set related to glass identification. The data consist of 214 glass samples labeled as one of seven class categories. There are nine predictors, including the refractive index and percentages of eight elements: Na, Mg, Al, Si, K, Ca, Ba, and Fe.**
+
+(a.) Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.
+
+(b.) Do there appear to be any outliers in the data? Are any predictors skewed?
+
+(c.) Are there any relevant transformations of one or more predictors that might improve the classification model?
+
+```{r, 3.1 load data, message=FALSE, warning=FALSE}
+library(mlbench)
+data(Glass)
+str(Glass)
+summary(Glass)
+```
+
+## (a)
+
+**Using visualizations, explore the predictor variables to understand their distributions as well as the relationships between predictors.**
+
+Answer:
+```{r 3.1 (a)}
+data <- Glass %>% select(-Type)
+data %>%
+  gather(key = 'Predictor', value = 'Value') %>%
+  ggplot(aes(x=Value)) +
+  geom_histogram(bins=30) +
+  facet_wrap(~Predictor,scales = "free") +
+  theme_hc()+
+  ggtitle('Histogram: Glass')
+
+pairs.panels(data, scale=TRUE)
+```
+
+
+
+
+## (b)
+
+**Do there appear to be any outliers in the data? Are any predictors skewed?**
+
+**Answer:**
+
+
+1. All predictors except Mg have outliers.
+
+2. From (a), all predictors are skewed.
+
+```{r 3.1 b,}
+data %>%
+  gather(key = 'Predictor', value = 'Value') %>%
+  ggplot(aes(x=Value, y = Predictor)) +
+  geom_boxplot()+
+  facet_wrap(~Predictor, scales = 'free')+
+  theme_hc()
+
+
+```
+
+
+
+## (c)
+
+**Are there any relevant transformations of one or more predictors that might improve the classification model?**
+
+**Answer:**
+
+1. Targeting skewness, use BoxCox transformation to normalize the data.
+
+2. Targeting collinearty, since RI and Ca has highest correlation 0.81, perform predictor reduction by either:
+  (a) perform PCA after data normalization (BoxCox, center, scale, etc.,.);
+  (b) remove either RI or Ca, whichever has higher mean correlation among the dataset.
+
+
+
+
+
+# Question - 3.2
+**The soybean data can also be found at the UC Irvine Machine Learning Repository. Data were collected to predict disease in 683 soybeans. The 35 predictors are mostly categorical and include information on the environmental conditions (e.g., temperature, precipitation) and plant conditions (e.g., left spots, mold growth). The outcome labels consist of 19 distinct classes.**
+
+(a.) Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?
+
+(b.) Roughly 18% of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?
+
+(c.) Develop a strategy for handling missing data, either by eliminating predictors or imputation.
+
+
+```{r, message=FALSE, warning=FALSE}
+library(mlbench)
+data(Soybean)
+str(Soybean)
+summary(Soybean, maxsum=20)
+```
+
+## (a)
+
+**Investigate the frequency distributions for the categorical predictors. Are any of the distributions degenerate in the ways discussed earlier in this chapter?**
+
+**Answer:**
+
+According to this cahpter, some models can be crippled by predictors with degenerate distributions, such as predictors with near zeo predictors. A rule of thumb for detecting near-zero variance predctors is:
+
+-The fraction of unique values over the sample size is low (say 10%).
+
+-The ratio of the frequency of the most prevalent value to the frequency of the second most prevalent value is large (say around 20).
+
+If both of these criteria are true and the model in question is susceptible to this type of predictor, it may be advantageous to remove the variable from the model. 
+
+In this dataset, there are three predictors meet both criteria, which are `leaf.mild`, `mycelium`, and `sclerotia`.
+
+
+
+```{r 3.2 (a) 1, message=FALSE, warning=FALSE}
+Soybean %>% 
+  select(1:18) %>%
+  gather(key = 'Predictor', value = 'Value', -Class) %>%
+  ggplot(aes(x=Value))+
+  geom_histogram(stat="count")+
+  facet_wrap(~Predictor, scales = 'free')+
+  ggtitle('Histogram:Soybean - 1')+
+  theme_hc()
+
+Soybean %>% 
+  select(1,19:36) %>%
+  gather(key = 'Predictor', value = 'Value', -Class) %>%
+  ggplot(aes(x=Value))+
+  geom_histogram(stat="count")+
+  facet_wrap(~Predictor, scales = 'free')+
+  ggtitle('Histogram:Soybean - 2')+
+  theme_hc()
+
+```
+
+```{r 3.2 （a) 2, message=FALSE, warning=FALSE}
+Row_Cnt <- Soybean %>%
+  gather(key = 'Predictor', value = 'Value', -Class, na.rm = FALSE) %>%
+  #mutate(Value = if_else(is.na(Value),'NA', Value)) %>%
+  group_by(Predictor) %>%
+  tally(n='Row_Cnt')
+
+# Predictors with fraction of unique values over the sample size less than 10%
+Soybean %>%
+  gather(key = 'Predictor', value = 'Value', -Class) %>%
+  group_by(Predictor, Value) %>%
+  tally(n='Val_Cnt') %>%
+  left_join(Row_Cnt) %>%
+  mutate(Uniq_Val_Frac=Val_Cnt/Row_Cnt) %>%
+  filter(!is.na(Value), Uniq_Val_Frac < 0.1) %>%
+  select(Predictor) %>%
+  unique()
+```
+
+```{r 3.2 （a) 3}
+# Predictors with the ratio of the frequency of the most prevalent value to the frequency of the second most prevalent value is large
+Soybean %>%
+  gather(key = 'Predictor', value = 'Value', -Class, na.rm = TRUE) %>%
+  group_by(Predictor, Value) %>%
+  tally(n='Cnt') %>%
+  arrange(Predictor, desc(Cnt)) %>%
+  mutate(id = row_number()) %>%
+  filter(id %in% c(1,2)) %>%
+  select(-Value) %>%
+  spread(key = 'id', value = 'Cnt') %>%
+  mutate(Ratio_1to2 = `1`/`2`) %>%
+  filter(Ratio_1to2 >=20) %>%
+  select(-`1`,-`2`)
+
+
+```
+
+
+## (b)
+
+**Roughly 18% of the data are missing. Are there particular predictors that are more likely to be missing? Is the pattern of missing data related to the classes?**
+
+**Answer:**
+
+1. Most of the predictors have missing values, and nearly half of them contain more than 75 missing values respectively. The predictors have the most missing values are `server`, `seed.tmt`, `lodging` and `hail`.
+
+2. The missing data is highly related to the classes. There are only 5 classes with missing values, including `phytophthora-rot`, `2-4-d-injury`, `cyst-nematode`, `diaporthe-pod-&-stem-blight` and `herbicide-injury`
+
+
+
+```{r, message=FALSE, warning=FALSE}
+gg_miss_var(Soybean)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+Soybean %>%
+  gather(key = 'Predictor', value = 'Value', - Class) %>%
+  group_by(Class) %>%
+  summarise(NA_Cnt = sum(is.na(Value))) %>%
+  ggplot(aes(x=reorder(Class, NA_Cnt), y=NA_Cnt))+
+  geom_bar(stat='identity')+
+  coord_flip()+
+  theme_hc()+
+  ggtitle('Soybean: Missing Value Count by Class')+
+  ylab('NA Count')+
+  xlab('Class')
+```
+
+
+
+
+
+## (c)
+
+**Develop a strategy for handling missing data, either by eliminating predictors or imputation.**
+
+Answer:
+1. Remove predictors with near zero variation, including `leaf.mild`, `mycelium`, and `sclerotia`.
+
+2. Use KNN to imputate missing values
+
+3. Or using `missForest` to imputate missing values.
+```{r 3.2 (c) 1}
+Soybean %>%
+  select(-leaf.mild, -mycelium, -sclerotia) %>%
+  DMwR::knnImputation(k=5) %>%
+  gg_miss_var()
+```
+
+```{r 3.2 (c) 2}
+Soybean %>%
+  select(-leaf.mild, -mycelium, -sclerotia) %>%
+  missForest() %>%
+  .$ximp %>%
+  gg_miss_var()
+
+```
