@@ -1,0 +1,554 @@
+---
+title: "DATA 624 - HOMEWORK 5"
+author: "Fan Xu"
+date: "03/14/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  html_notebook: default
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r load package, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(corrplot)
+library(missForest)
+library(ggthemes)
+library(rio)
+```
+
+
+# Question - 7.1
+**Consider the pigs series — the number of pigs slaughtered in Victoria each month.**
+
+(a.) Use the ses() function in R to find the optimal values of $\alpha$ and $l_{0}$, and generate forecasts for the next four months.
+
+(b.) Compute a 95% prediction interval for the first forecast using $\hat{y}\pm 1.96s$ where $s$ is the standard deviation of the residuals. Compare your interval with the interval produced by R.
+
+
+```{r, 7.1 load data, message=FALSE, warning=FALSE}
+library(fpp2)
+data(pigs)
+str(pigs)
+summary(pigs)
+```
+
+## (a)
+
+**Use the ses() function in R to find the optimal values of $\alpha$ and $l_{0}$, and generate forecasts for the next four months.**
+
+**Answer:**
+
+1. $\alpha = 0.2971$
+
+2. $l_{0} = 77260.0561$
+
+```{r 7.1 (a)}
+data <- ses(pigs, h=4)
+summary(data)
+autoplot(data) +
+  autolayer(fitted(data), series="Fitted") +
+  theme_hc() +
+  ylab("Number of Pigs") +
+  ggtitle('Forecasts from SES on Number of Pigs slaughtered in Victoria')
+```
+
+
+## (b)
+
+**Compute a 95% prediction interval for the first forecast using $\hat{y}\pm 1.96s$ where $s$ is the standard deviation of the residuals. Compare your interval with the interval produced by R.**
+
+**Answer:**
+
+1. From the summary in part a, the 95% prediction interval produced by R for the first forecast at Sep 1995 is [78611.97, 119020.84].
+
+2. By computation, the 95% prediction interval for the first forecast $\hat{y}\pm 1.96s$ at Sep 1995 is [78679.97, 118952.84].
+
+3. The interval obtained by computation is narrower and better.
+
+```{r 3.1 b,}
+pred_int <- data.frame(Method = as.character(),
+                       Lower = as.numeric(),
+                       Upper = as.numeric())
+pred_int %>%
+  add_row(Method="R", Lower=data$lower[1,2][[1]], Upper=data$upper[1,2][[1]]) %>%
+  add_row(Method="Computation", Lower=data$mean[1]-1.96*sd(data$residuals), Upper=data$mean[1]+1.96*sd(data$residuals))
+```
+
+
+
+
+# Question - 7.5
+**Data set books contains the daily sales of paperback and hardcover books at the same store. The task is to forecast the next four days’ sales for paperback and hardcover books.**
+
+(a.) Plot the series and discuss the main features of the data.
+
+(b.) Use the ses() function to forecast each series, and plot the forecasts.
+
+(c.) Compute the RMSE values for the training data in each case.
+
+
+```{r, message=FALSE, warning=FALSE}
+data(books)
+str(books)
+summary(books)
+```
+
+## (a)
+
+**Plot the series and discuss the main features of the data.**
+
+**Answer:**
+
+According to the plot:
+
+1. There is no seasonal or cyclic behavior in both series.
+
+2. The trend is a gradually increasing trend in both series.
+
+```{r 7.5 (a), message=FALSE, warning=FALSE}
+autoplot(books) +
+  theme_hc() +
+  xlab("Day") + ylab("Sales") +
+  ggtitle("Daily sales of paperback and hardcover books at the same store")
+```
+
+
+## (b)
+
+**Use the ses() function to forecast each series, and plot the forecasts.**
+
+**Answer:**
+
+According to the plot:
+
+1. The forecast trend in both series are constant.
+
+```{r 7.5 (b), message=FALSE, warning=FALSE}
+data1 <- ses(books[, "Paperback"], h=4)
+data2 <- ses(books[, "Hardcover"], h=4)
+autoplot(books) +
+  autolayer(data1, series="Paperback", PI=FALSE) +
+  autolayer(data2, series="Hardcover", PI=FALSE) +
+  theme_hc() +
+  xlab("Day") + ylab("Sales") +
+  ggtitle("Forecasts from SES on Daily sales of paperback and \n hardcover books at the same store")
+```
+
+
+## (c)
+
+**Compute the RMSE values for the training data in each case.**
+
+**Answer:**
+
+The RMSE values can be found using summary() function.
+
+```{r 7.5 (c), message=FALSE, warning=FALSE}
+RMSE_table <- data.frame(Method = as.character(),
+                       RMSE = as.numeric())
+RMSE_table %>%
+  add_row(Method="SES-Paperback", RMSE=accuracy(data1)[2]) %>%
+  add_row(Method="SES-Hardcover", RMSE=accuracy(data2)[2])
+```
+
+
+
+# Question - 7.6
+**Data set books contains the daily sales of paperback and hardcover books at the same store. The task is to forecast the next four days’ sales for paperback and hardcover books.**
+
+(a.) Now apply Holt’s linear method to the paperback and hardback series and compute four-day forecasts in each case.
+
+(b.) Compare the RMSE measures of Holt’s method for the two series to those of simple exponential smoothing in the previous question. (Remember that Holt’s method is using one more parameter than SES.) Discuss the merits of the two forecasting methods for these data sets.
+
+(c.) Compare the forecasts for the two series using both methods. Which do you think is best?
+
+(d.) Calculate a 95% prediction interval for the first forecast for each series, using the RMSE values and assuming normal errors. Compare your intervals with those produced using ses() and holt().
+
+## (a)
+
+**Now apply Holt’s linear method to the paperback and hardback series and compute four-day forecasts in each case.**
+
+**Answer:**
+
+According to the plot:
+
+1. The forecast trend in both series are increasing.
+
+```{r 7.6 (a), message=FALSE, warning=FALSE}
+data3 <- holt(books[, "Paperback"], h=4)
+data4 <- holt(books[, "Hardcover"], h=4)
+autoplot(books) +
+  autolayer(data3, series="Paperback", PI=FALSE) +
+  autolayer(data4, series="Hardcover", PI=FALSE) +
+  theme_hc() +
+  xlab("Day") + ylab("Sales") +
+  ggtitle("Forecasts from Holt's on Daily sales of paperback and \n hardcover books at the same store")
+```
+
+
+## (b)
+
+**Compare the RMSE measures of Holt’s method for the two series to those of simple exponential smoothing in the previous question. (Remember that Holt’s method is using one more parameter than SES.) Discuss the merits of the two forecasting methods for these data sets.**
+
+**Answer:**
+
+Holt's method performs better than simple exponential smoothing method.
+
+1. The RMSE values obtained using Holt's method are smaller than that of simple exponential smoothing method.
+
+2. Holt's linear method uses one more parameter than SES to estimate the trend of the series. It is showed in the above forecasting plot with increasing forecast trends.
+
+```{r 7.6 (b), message=FALSE, warning=FALSE}
+RMSE_table <- data.frame(Method = as.character(),
+                       RMSE = as.numeric())
+RMSE_table %>%
+  add_row(Method="SES-Paperback", RMSE=accuracy(data1)[2]) %>%
+  add_row(Method="SES-Hardcover", RMSE=accuracy(data2)[2]) %>%
+  add_row(Method="Holt's-Paperback", RMSE=accuracy(data3)[2]) %>%
+  add_row(Method="Holt's-Hardcover", RMSE=accuracy(data4)[2])
+```
+
+
+## (c)
+
+**Compare the forecasts for the two series using both methods. Which do you think is best?**
+
+**Answer:**
+
+Holt's method performs better than simple exponential smoothing method.
+
+1. The RMSE values obtained using Holt's method are smaller than that of simple exponential smoothing method.
+
+2. Holt's linear method uses one more parameter than SES to estimate the trend of the series. It is showed in the above forecasting plot with increasing forecast trends.
+
+```{r 7.6 (c), message=FALSE, warning=FALSE}
+autoplot(books) +
+  autolayer(data1, series="SES-Paperback", PI=FALSE) +
+  autolayer(data2, series="SES-Hardcover", PI=FALSE) +
+  autolayer(data3, series="Holt's-Paperback", PI=FALSE) +
+  autolayer(data4, series="Holt's-Hardcover", PI=FALSE) +
+  theme_hc() +
+  xlab("Day") + ylab("Sales") +
+  ggtitle("Forecasts from SES and Holt's on Daily sales of \n paperback and hardcover books at the same store")
+```
+
+
+## (d)
+
+**Calculate a 95% prediction interval for the first forecast for each series, using the RMSE values and assuming normal errors. Compare your intervals with those produced using ses() and holt().**
+
+**Answer:**
+
+1. The 95% prediction interval can be found using summary() function produced by ses() and holt().
+
+2. Instead of using sd(), here uses the RMSE values to compute the 95% prediction interval.
+
+3. The interval obtained by computation is generally narrower than those obtained by R functions.
+
+```{r 7.6 (d), message=FALSE, warning=FALSE}
+pred_int <- data.frame(Method = as.character(),
+                       Lower = as.numeric(),
+                       Upper = as.numeric())
+pred_int %>%
+  add_row(Method="R-SES-Paperback", Lower=data1$lower[1,2][[1]], Upper=data1$upper[1,2][[1]]) %>%
+  add_row(Method="R-SES-Hardcover", Lower=data2$lower[1,2][[1]], Upper=data2$upper[1,2][[1]]) %>%
+  add_row(Method="R-Holt's-Paperback", Lower=data3$lower[1,2][[1]], Upper=data3$upper[1,2][[1]]) %>%
+  add_row(Method="R-Holt's-Hardcover", Lower=data4$lower[1,2][[1]], Upper=data4$upper[1,2][[1]]) %>%
+  add_row(Method="RMSE-SES-Paperback", Lower=data1$mean[1]-1.96*accuracy(data1)[2], Upper=data1$mean[1]+1.96*accuracy(data1)[2]) %>%
+  add_row(Method="RMSE-SES-Hardcover", Lower=data2$mean[1]-1.96*accuracy(data2)[2], Upper=data2$mean[1]+1.96*accuracy(data2)[2]) %>%
+  add_row(Method="RMSE-Holt's-Paperback", Lower=data3$mean[1]-1.96*accuracy(data3)[2], Upper=data3$mean[1]+1.96*accuracy(data3)[2]) %>%
+  add_row(Method="RMSE-Holt's-Hardcover", Lower=data4$mean[1]-1.96*accuracy(data4)[2], Upper=data4$mean[1]+1.96*accuracy(data4)[2]) 
+```
+
+
+# Question - 7.7
+**For this exercise use data set eggs, the price of a dozen eggs in the United States from 1900–1993. Experiment with the various options in the holt() function to see how much the forecasts change with damped trend, or with a Box-Cox transformation. Try to develop an intuition of what each argument is doing to the forecasts.**
+
+**[Hint: use h=100 when calling holt() so you can clearly see the differences between the various options when plotting the forecasts.]**
+
+**Which model gives the best RMSE?**
+
+## (a)
+
+**For this exercise use data set eggs, the price of a dozen eggs in the United States from 1900–1993. Experiment with the various options in the holt() function to see how much the forecasts change with damped trend, or with a Box-Cox transformation. Try to develop an intuition of what each argument is doing to the forecasts.**
+
+**[Hint: use h=100 when calling holt() so you can clearly see the differences between the various options when plotting the forecasts.]**
+
+**Answer:**
+
+According to the forecasting plot, the forecast trends are decreasing:
+
+1. Holt's with damped trend has nearly flat trend.
+
+2. Holt's with a Box-Cox transformation and damped trend has slightly decreasing trend.
+
+3. Holt's with a Box-Cox transformation has a gradually decreasing trend.
+
+4. Holt's method has a sharply decreasing trend.
+
+```{r 7.7 (a), message=FALSE, warning=FALSE}
+data1 <- holt(eggs, h=100)
+data2 <- holt(eggs, h=100, damped = TRUE)
+data3 <- holt(eggs, h=100, lambda = "auto")
+data4 <- holt(eggs, h=100, lambda = "auto", damped = TRUE)
+
+autoplot(eggs) +
+  autolayer(data1, series="Holt's", PI=FALSE) +
+  autolayer(data2, series="Holt's-Damped", PI=FALSE) +
+  autolayer(data3, series="Holt's-BoxCox", PI=FALSE) +
+  autolayer(data4, series="Holt's-BoxCox-Damped", PI=FALSE) +
+  theme_hc() +
+  xlab("Year") + ylab("Price (USD)") +
+  ggtitle("Forecasts on Price of dozen eggs in US, 1900–1993")
+```
+
+
+
+## (b)
+
+**Which model gives the best RMSE?**
+
+RMSE can be obtained using summary function:
+
+1. All four RMSE values are very close.
+
+2. The Holt's method with Box-Cox transformation gives the best RMSE.
+
+```{r 7.7 (b), message=FALSE, warning=FALSE}
+RMSE_table <- data.frame(Method = as.character(),
+                       RMSE = as.numeric())
+RMSE_table %>%
+  add_row(Method="Holt's", RMSE=accuracy(data1)[2]) %>%
+  add_row(Method="Holt's-Damped", RMSE=accuracy(data2)[2]) %>%
+  add_row(Method="Holt's-BoxCox", RMSE=accuracy(data3)[2]) %>%
+  add_row(Method="Holt's-BoxCox-Damped", RMSE=accuracy(data4)[2])
+```
+
+
+# Question - 7.8
+**Recall your retail time series data (from Exercise 3 in Section 2.10).**
+
+(a.) Why is multiplicative seasonality necessary for this series?
+
+(b.) Apply Holt-Winters’ multiplicative method to the data. Experiment with making the trend damped.
+
+(c.) Compare the RMSE of the one-step forecasts from the two methods. Which do you prefer?
+
+(d.) Check that the residuals from the best method look like white noise.
+
+(e.) Now find the test set RMSE, while training the model to the end of 2010. Can you beat the seasonal naive approach from Exercise 8 in Section 3.7?
+
+## (a)
+
+**Why is multiplicative seasonality necessary for this series?**
+
+**Answer:**
+
+1. In our textbook, we know that multiplicative method is preferred when the seasonality variations are changing proportional to the level of the series. 
+
+2. This time series below has a proportionally increasing seasonality, which satisfied the statement where multiplicative method is preferred. 
+
+```{r 7.8 (a), message=FALSE, warning=FALSE}
+retaildata <- import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/HW_1-WEEK_2/retail.xlsx', skip=1)
+#retaildata
+myts<- ts(retaildata[,"A3349398A"], frequency=12, start=c(1982,4))
+autoplot(myts) +
+  ggtitle('Monthly Food Retailing in Australia')
+```
+
+
+## (b)
+
+**Apply Holt-Winters' multiplicative method to the data. Experiment with making the trend damped.**
+
+**Answer:**
+
+- The multiplicative forecast has an obvious increasing trend.
+
+- The multiplicative forecast with damped method has a slightly increasing trend.
+
+```{r 7.8 (b), message=FALSE, warning=FALSE}
+myts_hw <- hw(myts, h=100, seasonal="multiplicative")
+myts_hwd <- hw(myts, h=100, seasonal="multiplicative", damped=TRUE)
+
+autoplot(myts) +
+  autolayer(myts_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("Monthly Food Retailing in Australia")
+
+autoplot(myts) +
+  autolayer(myts_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("**Zoom-in on the forecast part") +
+  xlim(c(2013,2023)) + ylim(c(2000,4800))
+```
+
+## (c)
+
+**Compare the RMSE of the one-step forecasts from the two methods. Which do you prefer?**
+
+**Answer:**
+
+The Holt-Winter's multiplicative method is preferred as it has a smaller RMSE.
+
+```{r 7.8 (c), message=FALSE, warning=FALSE}
+myts_hw1 <- hw(myts, seasonal="multiplicative", h=1)
+myts_hwd1 <- hw(myts, seasonal="multiplicative", h=1, damped=TRUE)
+
+RMSE_table <- data.frame(Method = as.character(),
+                       RMSE = as.numeric())
+RMSE_table %>%
+  add_row(Method="Holt-Winters'", RMSE=accuracy(myts_hw1)[2]) %>%
+  add_row(Method="Holt-Winters' damped", RMSE=accuracy(myts_hwd1)[2])
+```
+
+
+## (d)
+
+**Check that the residuals from the best method look like white noise.**
+
+**Answer:**
+
+1. The fluctuation of the residuals gradually decreases.
+
+2. The ACF plot shows that the residuals are somewhat correlated.
+
+3. The histogram shows that the mean is close to 0 and nearly normal.
+
+4. Therefore, the residuals look like not exactly white noise.
+
+```{r 7.8 (d), warning=FALSE}
+checkresiduals(myts_hw1)
+```
+
+
+
+## (e)
+
+**Now find the test set RMSE, while training the model to the end of 2010. Can you beat the seasonal naive approach from Exercise 8 in Section 3.7?**
+
+**Answer:**
+
+1. The best RMSE among the three methods are Holt-Winters' trend method. The Holt-Winters' with damped method is close too.
+
+2. Both the Holt-Winters' and Holt-Winters' damped methods perform much better than sasonal naive approach.
+
+```{r 7.8 (e), message=FALSE, warning=FALSE}
+set.seed(0)
+myts_train <- window(myts, end=c(2010,12))
+myts_test <- window(myts, start=2011)
+
+myts_train_hw <- hw(myts_train, h=36, seasonal="multiplicative")
+myts_train_hwd <- hw(myts_train, h=36, seasonal="multiplicative", damped=TRUE)
+myts_train_sn <- snaive(myts_train, h=36)
+
+RMSE_table <- data.frame(Method = as.character(),
+                       Train = as.numeric(),
+                       Test = as.numeric())
+RMSE_table %>%
+  add_row(Method="Holt-Winters'", Train=accuracy(myts_train_hw, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_hw, myts_test)[,2][2][[1]]) %>%
+  add_row(Method="Holt-Winters' damped", Train=accuracy(myts_train_hwd, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_hwd, myts_test)[,2][2][[1]]) %>%
+  add_row(Method="Seasonal Naive", Train=accuracy(myts_train_sn, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_sn, myts_test)[,2][2][[1]])
+
+autoplot(myts) +
+  autolayer(myts_train_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_train_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  autolayer(myts_train_sn, series="Seasonal Naive", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("Monthly Food Retailing in Australia")
+
+autoplot(myts) +
+  autolayer(myts_train_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_train_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  autolayer(myts_train_sn, series="Seasonal Naive", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("**Zoom-in on the forecast part") +
+  xlim(c(2010,2014)) + ylim(c(1500,3500))
+
+```
+
+
+# Question - 7.9
+**For the same retail data, try an STL decomposition applied to the Box-Cox transformed series, followed by ETS on the seasonally adjusted data. How does that compare with your best previous forecasts on the test set?**
+
+## (a)
+
+**For the same retail data, try an STL decomposition applied to the Box-Cox transformed series, followed by ETS on the seasonally adjusted data. How does that compare with your best previous forecasts on the test set?**
+
+**Answer:**
+
+1. The STL-BoxCox-ETS method gives the best RMSE values on both training and test set.
+
+```{r 7.9 (a), message=FALSE, warning=FALSE}
+myts_train_stlf <- stlf(myts_train, 
+                        lambda=BoxCox.lambda(myts_train), 
+                        method="ets", 
+                        allow.multiplicative.trend=TRUE, 
+                        h=36)
+RMSE_table <- data.frame(Method = as.character(),
+                       Train = as.numeric(),
+                       Test = as.numeric())
+RMSE_table %>%
+  add_row(Method="Holt-Winters'", Train=accuracy(myts_train_stlf, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_stlf, myts_test)[,2][2][[1]]) %>%
+  add_row(Method="Holt-Winters'", Train=accuracy(myts_train_hw, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_hw, myts_test)[,2][2][[1]]) %>%
+  add_row(Method="Holt-Winters' damped", Train=accuracy(myts_train_hwd, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_hwd, myts_test)[,2][2][[1]]) %>%
+  add_row(Method="Seasonal Naive", Train=accuracy(myts_train_sn, myts_test)[,2][1][[1]], 
+          Test=accuracy(myts_train_sn, myts_test)[,2][2][[1]])
+```
+
+```{r 7.9 (b), message=FALSE, warning=FALSE}
+autoplot(myts) +
+  autolayer(myts_train_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_train_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  autolayer(myts_train_sn, series="Seasonal Naive", PI=FALSE) +
+  autolayer(myts_train_stlf, series="STL-BoxCox-ETS", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("Monthly Food Retailing in Australia")
+
+autoplot(myts) +
+  autolayer(myts_train_hw, series="Multiplicative", PI=FALSE) +
+  autolayer(myts_train_hwd, series="Multiplicative-Damped", PI=FALSE) +
+  autolayer(myts_train_sn, series="Seasonal Naive", PI=FALSE) +
+  autolayer(myts_train_stlf, series="STL-BoxCox-ETS", PI=FALSE) +
+  theme_hc() +
+  ylab("Sales") + 
+  ggtitle("**Zoom-in on the forecast part") +
+  xlim(c(2010,2014)) + ylim(c(1500,3500))
+```
