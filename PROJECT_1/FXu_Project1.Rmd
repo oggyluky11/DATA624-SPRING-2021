@@ -1,0 +1,766 @@
+---
+title: "DATA 608 - PROJECT 1"
+author: "Fan Xu"
+date: "4/12/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  html_notebook: default
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This project consists of 3 parts - two required and one bonus and is worth 15% of your grade.  
+
+**Part A** – ATM Forecast, ATM624Data.xlsx
+
+In part A, I want you to forecast how much cash is taken out of 4 different ATM machines for May 2010.  The data is given in a single file.  The variable ‘Cash’ is provided in hundreds of dollars, other than that it is straight forward.   I am being somewhat ambiguous on purpose to make this have a little more business feeling.  Explain and demonstrate your process, techniques used and not used, and your actual forecast.  I am giving you data via an excel file, please provide your written report on your findings, visuals, discussion and your R code via an RPubs link along with the actual.rmd file  Also please submit the forecast which you will put in an Excel readable file.
+
+
+**Part B** – Forecasting Power, ResidentialCustomerForecastLoad-624.xlsx
+
+Part B consists of a simple dataset of residential power usage for January 1998 until December 2013.  Your assignment is to model these data and a monthly forecast for 2014.  The data is given in a single file.  The variable ‘KWH’ is power consumption in Kilowatt hours, the rest is straight forward.    Add this to your existing files above. 
+
+ 
+**Part C** – BONUS, optional (part or all), Waterflow_Pipe1.xlsx and Waterflow_Pipe2.xlsx
+
+Part C consists of two data sets.  These are simple 2 columns sets, however they have different time stamps.  Your optional assignment is to time-base sequence the data and aggregate based on hour (example of what this looks like, follows).  Note for multiple recordings within an hour, take the mean.  Then to determine if the data is stationary and can it be forecast.  If so, provide a week forward forecast and present results via Rpubs and .rmd and the forecast in an Excel readable file.   
+
+
+# Package
+
+The following R package are used in this project.
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(fpp2)
+library(imputeTS)
+library(readxl)
+library(xlsx)
+library(rio)
+library(ggthemes)
+library(plotly)
+library(urca)
+library(ggpubr)
+
+```
+
+
+# Part A
+
+## Data Exploration
+
+### Data Summary
+```{r import atm data, warning=FALSE}
+atm <- rio::import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/PROJECT_1/ATM624Data.xlsx', 
+                   col_types = c('date', 'text', 'numeric')) %>%
+  mutate(ATM = as.factor(ATM))
+summary(atm)
+```
+
+### Missing-value Check 
+
+It's observed that there are 6 missing values of [Cash] from series `ATM1` & `ATM2` before May 2010, and all [Cash] values after May 2010 are missing. As we are requested to forecast how much cash is taken in May 2010, the current data rows of May 2010 are removed. 
+```{r Missing-value Check}
+atm %>% filter(is.na(DATE) | is.na(ATM) | is.na(Cash))
+
+atm_mod <- atm %>% filter(DATE <= '2010-04-30')
+summary(atm_mod)
+```
+
+
+
+### Timelineness Check
+
+Check the timelineness of the daily series. It is checked that there are no daily gaps in the daily time series.
+```{r Timelineness Check}
+full_date <- seq(min(atm_mod$DATE), max(atm_mod$DATE), by = 'days') 
+
+data.frame(full_date) %>% filter(!full_date %in% atm_mod$DATE)
+  
+```
+
+
+### Outliner Check
+Check that there exist significant outliner at ATM4 series.
+
+
+```{r Outliner Check}
+atm_mod %>%
+  ggplot(aes(x=Cash)) +
+  geom_boxplot(na.rm = TRUE) +
+  facet_grid(cols = vars(ATM), scales = 'free') +
+  ggtitle('Boxplot: ATM') 
+
+p <- atm_mod %>%
+  ggplot(aes(x=DATE,y=Cash)) +
+  geom_line() +
+  facet_grid(rows = vars(ATM), scales = 'free') +
+  labs(title = 'Time Series: ATM Cash Withdrawal of 4 ATM Machines',
+       subtitle = 'May 2009 to Apr 2010') 
+  
+
+
+ggplotly(p)
+```
+
+
+## Data Manipulation
+
+### Imputing Missing Values
+
+Using `na_interpolation` function from `imputeTS` package to impute missing values for time series `ATM1` & `ATM2`
+```{r imputing missing values}
+atm_ts <- atm_mod %>% 
+  spread(key = 'ATM', value = 'Cash') %>%
+  select(-DATE) %>%
+  ts(frequency = 7) 
+
+
+atm_ts_imp <- na_interpolation(atm_ts)
+
+ggarrange(
+  ggplot_na_imputations(atm_ts[,1], atm_ts_imp[,1]) +
+    theme_igray() +
+    ggtitle('Imputed Values - ATM 1'),
+  ggplot_na_imputations(atm_ts[,2], atm_ts_imp[,2]) +
+    theme_igray() +
+    ggtitle('Imputed Values - ATM 2'),
+  nrow = 2)
+```
+
+### Handling Outliners
+suspress outliner in `ATM4` using function `tsclean`.
+```{r}
+atm_ts_imp[,4] <- tsclean(atm_ts_imp[,4])
+```
+
+
+
+
+## Data Visualization
+
+Observed that outliners are suppressed in the final data set.
+```{r Data Visualization}
+p <- atm_ts_imp %>%
+  data.frame() %>%
+  cbind(DATE = full_date) %>%
+  gather(key = 'ATM', value = 'Cash', -DATE) %>%
+  ggplot(aes(x=DATE,y=Cash)) +
+  geom_line() +
+  facet_grid(rows = vars(ATM), scales = 'free') 
+
+ggplotly(p)
+```
+
+
+## ATM 1
+
+### Observation on Raw Data
+  1. Significant weekly seasonality exists;
+
+  2. No sign of steady trend but small fluctuation over time;
+  
+  3. ACF shows decreasing trend in seasonal lags and PACF shows drop off after the first seasonal lag.
+  
+  4. Both ACF and PACF show non-seasonal lags either within the critical limit of slightly above the limit.
+  
+  5. Based on the above observation, the time series `atm_1` is non-stationary with significant seasonality and little trend. seasonal Differecing is required to transform `atm_1` into a stationary series. 
+
+
+```{r ATM1 ggtsdisplay}
+atm_1 <- atm_ts_imp[,1]
+
+ggtsdisplay(atm_1, 
+            main = 'ATM 1 Cash Time Series ggtsdisplay') 
+
+ggsubseriesplot(atm_1) 
+```
+
+
+### Time Series Transformation
+
+1. Perform seasonal differencing with lag = 7;
+
+2. check with unit root test that the p-value is less than 0.05 therefore the transformed data set is within the expected range of staionary. 
+```{r atm 1 transformation} 
+atm_1_mod <- atm_1 %>%
+  BoxCox(BoxCox.lambda(atm_1)) %>%
+  diff(lag = 7) 
+
+atm_1_mod %>%
+  ur.kpss() %>%
+  summary()
+
+
+```
+
+
+### Observation on Transformed Data
+
+1. The seasonal effect is elimiated after deferencing, the transformed data shows no siginificant seasonality or trend. 
+
+2. As the data set becomes stationary after seasonal diferencing, no further differencing is needed.
+
+3. As this `atm_1` data set is non-stationary with seasonality, and becomes stationary after seasonal deferencing, an ARIMA model with seasonal difference D = 1. And because no further differencing is needed, the trend differnce d = 0. 
+
+4. The PACF shows decreasing trend in the seasonal tags, the ACF shows drop off after the first seasonal tag, therefore the Seasonal AR factor P = 0 and Seasonal MA factor Q = 1.
+
+5. The PACF shows decreasing trend in non-seasonal tags with multiple lags above critical limit,  and ACF shows drop off after the frist non-seasonal tag, therefore the AR factor p = 0 and MA factor q >= 1
+
+6. Therefore from the analysis above, suggested ARIMA models are ARIMA(0,0,>=1)(0,1,1)[7]
+```{r ATM1_mod ggtsdisplay}
+atm_1_mod %>%
+  ggtsdisplay(main = 'ATM 1 Cash Time Series ggtsdisplay - transformed') 
+
+```
+
+### Build ARIMA Model
+
+Use `auto.arima` function to determine a model with lowest AICc, this process verifies the claim above for suggested ARIMA models are ARIMA(0,0,>=1)(0,1,1)[7]. The value q obtained by `auto.arima` is 2. 
+
+The final model is **ARIMA(0,0,2)(0,1,1)[7]**.
+
+Checked that the p-value for Ljung-Box test is greater that 0.05, which means the residuals of the model have no remaining autocorrelations.
+
+```{r atm1 ARIMA auto}
+atm_1_ARIMA <- auto.arima(atm_1, lambda = BoxCox.lambda(atm_1), approximation = FALSE)
+atm_1_ARIMA
+checkresiduals(atm_1_ARIMA)
+
+```
+
+### Forecast
+To forecast the cash withdrawal in May 2010, we set h = 31
+```{r atm 1 forcast}
+atm_1_ARIMA %>%
+  forecast(h=31) %>%
+  autoplot() +
+  labs(title = 'Forecast for ATM Machines 1 May 2010 Cash Withdrawal',
+       x = 'Day', 
+       y = 'Amount (in hundreds of dollars)') 
+```
+
+
+## ATM 2
+
+### Observation on Raw Data
+  1. Significant weekly seasonality exists;
+
+  2. Slightly decreasing trend over time;
+  
+  3. ACF shows positive and decreasing trend in seasonal lags and PACF shows drop off after the first two seasonal lags.
+  
+  4. ACF shows slightly decreasing trend on non-seasonal lags, PACF shows drop off after the first two lags.
+  
+  5. Based on the above observation, the time series `atm_2` is non-stationary with significant seasonality and slightly decreasing trend. seasonal Differecing is required to transform `atm_2` into a stationary series. 
+
+
+```{r ATM2 ggtsdisplay}
+atm_2 <- atm_ts_imp[,2]
+
+ggtsdisplay(atm_2, 
+            main = 'ATM 2 Cash Time Series ggtsdisplay') 
+
+ggsubseriesplot(atm_2)
+```
+
+
+### Time Series Transformation
+
+1. Perform seasonal differencing with lag = 7;
+
+2. check with unit root test that the p-value is less than 0.05 therefore the transformed data set is within the expected range of staionary. 
+```{r atm 2 transformation} 
+atm_2_mod <- atm_2 %>%
+  BoxCox(BoxCox.lambda(atm_2)) %>%
+  diff(lag = 7) 
+
+atm_2_mod %>%
+  ur.kpss() %>%
+  summary()
+
+
+```
+
+
+### Observation on Transformed Data
+
+1. The seasonal effect is elimiated after deferencing, the transformed data shows no siginificant seasonality or trend. 
+
+2. As the data set becomes stationary after seasonal diferencing, no further trend differencing is needed.
+
+3. As this `atm_2` data set is non-stationary with seasonality, and becomes stationary after seasonal deferencing, an ARIMA model with seasonal difference D = 1. And because no further differencing is needed, the trend differnce d = 0. 
+
+4. The PACF shows decreasing trend in the seasonal tags, the ACF shows drop off after the first seasonal tag, therefore the Seasonal AR factor P = 0 and Seasonal MA factor Q = 1.
+
+5. Both ACF and PACF shows stable variations within or slightly above the critical limits, therefore both AR and MA factors can not be omitted, the AR factor p >= 1 and MA factor q >= 1
+
+6. Therefore from the analysis above, suggested ARIMA models are ARIMA(>=1,0,>=1)(0,1,1)[7]
+```{r ATM2_mod ggtsdisplay}
+atm_2_mod %>%
+  ggtsdisplay(main = 'ATM 2 Cash Time Series ggtsdisplay - transformed') 
+
+```
+
+### Build ARIMA Model
+
+Use `auto.arima` function to determine a model with lowest AICc, this process verifies the claim above for suggested ARIMA models are ARIMA(>=1,0,>=1)(0,1,1)[7]. The value p, q obtained by `auto.arima` are both 3. 
+
+The final model is **ARIMA(3,0,3)(0,1,1)[7] with drift**.
+
+Checked that the p-value for Ljung-Box test is greater that 0.05, which means the residuals of the model have no remaining autocorrelations.
+
+```{r atm2 ARIMA auto}
+atm_2_ARIMA <- auto.arima(atm_2, lambda = BoxCox.lambda(atm_2),approximation = FALSE)
+atm_2_ARIMA
+checkresiduals(atm_2_ARIMA)
+
+```
+
+### Forecast
+To forecast the cash withdrawal in May 2010, we set h = 31
+```{r atm 2 forcast}
+atm_2_ARIMA %>%
+  forecast(h=31) %>%
+  autoplot() +
+  labs(title = 'Forecast for ATM Machines 2 May 2010 Cash Withdrawal',
+       x = 'Day', 
+       y = 'Amount (in hundreds of dollars)') 
+```
+
+## ATM 3
+
+### Observation on Raw Data
+  1. There are only 3 valid data point exists in the time series. 
+  
+  2. Not enough information for inferring trend or seasonality, developing an advanced forecast model is not possible.
+  
+  3. Intead, use average method as the forcasting model.
+
+### Build Forcasting Model with Average Method
+
+```{r ATM3 ggtsdisplay}
+atm_3 <- atm_ts_imp[,3]
+
+autoplot(atm_3, 
+            main = 'ATM 3 Cash Time Series ggtsdisplay') +
+  autolayer(meanf(atm_3 %>% window(start=52.7), h = 31)) +
+  labs(title = 'Forecast for ATM Machines 3 May 2010 Cash Withdrawal',
+       x = 'Day', 
+       y = 'Amount (in hundreds of dollars)') 
+
+```
+
+## ATM 4
+
+### Observation on Raw Data
+  1. No stable seasonality over time;
+
+  2. No stable trend over time;
+  
+  3. The fluctuation over time appears to be random;
+  
+  4. Both ACF and PACF shows no significant spike at seasonal lags.
+  
+  4. Both ACF and PACF shows stable variable within critical limit expect a few spike in the begining.
+  
+  5. Based on the above observation, the time series `atm_4` is stationary with no seasonality and no stable trend. Differecing is not required to transform `atm_4`. 
+
+
+```{r ATM4 ggtsdisplay}
+atm_4 <- atm_ts_imp[,4]
+
+ggtsdisplay(atm_4, 
+            main = 'ATM 4 Cash Time Series ggtsdisplay') 
+
+ggsubseriesplot(atm_4)
+```
+
+
+### Time Series Transformation
+
+1. No differencing is performed due to no seasonality, however Box-cox is performed to stablize fluctuation in some degree;
+
+2. check with unit root test that the p-value is slightly over 0.05.
+```{r atm 4 transformation} 
+atm_4_mod <- atm_4 %>%
+  BoxCox(BoxCox.lambda(atm_4)) 
+atm_4_mod %>%
+  ur.kpss() %>%
+  summary()
+
+
+```
+
+
+### Observation on Transformed Data
+
+1. As this `atm_4` data set is somewhat stationary, an ARIMA model with difference factors D = 0 and d = 0. 
+
+2. As both ACF and PACF show decreasing trend in seasonal lags, however PACF decrease more dramatically than ACF and drop off after lag 21, therefore the Seasonal AR factor P >= 1 and Seasonal MA factor Q >= 0.
+
+3. Both ACF and PACF shows stable variations within or slightly above the critical limits, and PACF shows multiple spikes above critical limit, therefore  the AR factor p >= 0 and MA factor q >= 0.
+
+4. Therefore from the analysis above, suggested ARIMA models are ARIMA(>=0,0,>=0)(>=1,0,>=0)[7].
+```{r ATM4_mod ggtsdisplay}
+atm_4_mod %>%
+  ggtsdisplay(main = 'ATM 4 Cash Time Series ggtsdisplay - transformed') 
+
+```
+
+### Build ARIMA Model
+
+Use `auto.arima` function to determine a model with lowest AICc, this process verifies the claim above for suggested ARIMA models are ARIMA(>=0,0,>=0)(>=1,0,>=0)[7]. The value p, q, P, Q obtained by `auto.arima` are 1, 0, 2, 0 respectively. 
+
+The final model is **ARIMA(1,0,0)(2,0,0)[7] with non-zero mean**.
+
+Checked that the p-value for Ljung-Box test is greater that 0.05, which means the residuals of the model have no remaining autocorrelations.
+
+```{r atm4 ARIMA auto}
+atm_4_ARIMA <- auto.arima(atm_4, lambda = BoxCox.lambda(atm_4),approximation = FALSE)
+atm_4_ARIMA
+checkresiduals(atm_4_ARIMA)
+
+```
+
+### Forecast
+To forecast the cash withdrawal in May 2010, we set h = 31
+```{r atm 4 forcast}
+atm_4_ARIMA %>%
+  forecast(h=31) %>%
+  autoplot() +
+  labs(title = 'Forecast for ATM Machines 4 May 2010 Cash Withdrawal',
+       x = 'Day', 
+       y = 'Amount (in hundreds of dollars)') 
+```
+
+
+## Export Forecast to CSV
+```{r ATM export CSV}
+ATM_forecast <- cbind(ATM_1 = atm_1_ARIMA %>% forecast(h=31) %>% .$mean,
+                      ATM_2 = atm_2_ARIMA %>% forecast(h=31) %>% .$mean,
+                      ATM_3 = meanf(atm_3 %>% window(start=52.7), h = 31) %>% .$mean,
+                      ATM_4 = atm_4_ARIMA %>% forecast(h=31) %>% .$mean) %>%
+  data.frame() %>%
+  mutate(DATE = seq(as.Date('2010-5-1'), as.Date('2010-5-31'), by = 'days')) %>%
+  select(DATE, everything())
+
+ATM_forecast
+
+write.csv(ATM_forecast, 'ATM624Data_Forecast.csv', row.names = FALSE)
+```
+
+# Part B
+
+## Data Exploration
+
+### Data Summary
+```{r import res data, warning=FALSE}
+res<- rio::import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/PROJECT_1/ResidentialCustomerForecastLoad-624.xlsx') 
+
+summary(res)
+```
+
+### Missing-value Check 
+It's observed that there is only one missing value in Sep 2008. 
+```{r Missing-value Check part b}
+res %>% filter(is.na(CaseSequence) | is.na(`YYYY-MMM`) | is.na(KWH))
+
+```
+
+### Timelineness Check
+Check the timelineness of the monthly series. It is checked that there are no monthly gaps in the time series. There are total 12 years' monthly data in the time series.
+```{r Timelineness Check part b}
+res %>%
+  mutate(Month = str_extract(`YYYY-MMM`, '[[:alpha:]]+')) %>%
+  group_by(Month) %>%
+  tally(n='Count')
+```
+
+### Outliner Check
+Check that there is one outliner at case sequence 883.
+
+```{r Outliner Check part b}
+res %>%
+  ggplot(aes(x=KWH)) +
+  geom_boxplot(na.rm = TRUE) +
+  ggtitle('Boxplot: kWH') 
+
+res_ts <- res %>% 
+  select(KWH) %>%
+  ts(frequency = 12, start=c(1998,1)) 
+
+(autoplot(res_ts) +
+  labs(title = 'Time Series: Residential power usage from January 1998 to December 2013',
+       y = 'KWH')) %>% 
+  ggplotly()
+```
+
+
+## Data Manipulation
+
+### Imputing Missing Values & Handling Outliner
+
+Impute missing value & suspress outliner using function `tsclean`.
+```{r handling outliner part b}
+res_ts_imp <- tsclean(res_ts)
+```
+
+## Data Visualization
+
+Observed that outliners are suppressed in the final data set.
+```{r Data Visualization part b}
+(autoplot(res_ts_imp) +
+  labs(title = 'Time Series: Residential power usage from January 1998 to December 2013 (Modified)',
+       y = 'KWH')) %>%
+  ggplotly()
+```
+
+
+## Observation on Raw Data
+  1. Significant weekly seasonality exists;
+
+  2. No sign of steady trend but small fluctuation over time;
+  
+  3. ACF shows decreasing trend in seasonal lags and PACF shows drop off after the first seasonal lag.
+  
+  4. Both ACF and PACF show non-seasonal lags either within the critical limit of slightly above the limit.
+  
+  5. Based on the above observation, the time series `atm_1` is non-stationary with significant seasonality and little trend. seasonal Differecing is required to transform `atm_1` into a stationary series. 
+
+
+```{r res ggtsdisplay}
+
+ggtsdisplay(res_ts_imp, 
+            main = 'KWH Time Series ggtsdisplay') 
+
+ggsubseriesplot(res_ts_imp) 
+```
+
+
+## Time Series Transformation
+
+1. Perform seasonal differencing with lag = 12;
+
+2. check with unit root test that the p-value is greater than 0.05 therefore the test is failed. Sometimes it is not possible to find a model that passes all of the tests.
+```{r res transformation} 
+res_ts_mod <- res_ts_imp %>%
+  BoxCox(BoxCox.lambda(res_ts_imp)) %>%
+  diff(lag = 12) 
+
+res_ts_mod %>%
+  ur.kpss() %>%
+  summary()
+
+
+```
+
+
+## Observation on Transformed Data
+
+1. The seasonal effect is elimiated after deferencing, the transformed data shows no siginificant seasonality or trend. 
+
+2. As the data set becomes stationary after seasonal diferencing, no further differencing is needed.
+
+3. As this data set is non-stationary with seasonality, and becomes stationary after seasonal deferencing, an ARIMA model with seasonal difference D = 1. And because no further differencing is needed, the trend differnce d = 0. 
+
+4. The PACF shows decreasing trend in the seasonal tags with two spikes above critical limit, the ACF shows drop off after the first seasonal tag, therefore the Seasonal AR factor P = 0 and Seasonal MA factor Q >= 1.
+
+5. The PACF shows decreasing trend in non-seasonal tags with multiple lags above critical limit,  and ACF shows stable variation within the critical limit after the frist non-seasonal tag, therefore the AR factor p >= 1 and MA factor q = 0.
+
+6. Therefore from the analysis above, suggested ARIMA models are ARIMA(>=1,0,0)(0,1,1)[12].
+```{r res ggtsdisplay transformed}
+res_ts_mod %>%
+  ggtsdisplay(main = 'KWH Series ggtsdisplay - transformed') 
+
+```
+
+## Build ARIMA Model
+
+Use `auto.arima` function to determine a model with lowest AICc, this process verifies the claim above for suggested ARIMA models are ARIMA(>=1,0,0)(0,1,1)[12]. The value p obtained by `auto.arima` is 1. 
+
+The final model is **ARIMA(1,0,0)(0,1,1)[12] with drift**.
+
+Checked that the p-value for Ljung-Box test is greater that 0.05, which means the residuals of the model have no remaining autocorrelations.
+
+```{r res ARIMA auto}
+res_ARIMA <- auto.arima(res_ts %>% tsclean(), lambda = BoxCox.lambda(res_ts %>% tsclean()), approximation = FALSE)
+res_ARIMA
+checkresiduals(res_ARIMA)
+
+```
+
+## Forecast
+To forecast the cash withdrawal in May 2010, we set h = 12
+```{r res forcast}
+res_ARIMA %>%
+  forecast(h=12) %>%
+  autoplot() +
+  labs(title = 'Forecast for Residential power usage in year 2014',
+       x = 'Year-Month', 
+       y = 'KWH') 
+```
+
+```{r}
+month.abb
+
+```
+
+## Add Forecast to Existing File
+```{r res add forecast to existing file}
+res_forecast <- data.frame(seq(max(res$CaseSequence)+1,max(res$CaseSequence)+12),
+                           paste('2014',month.abb, sep = '-'), 
+                           res_ARIMA %>% forecast(h=12) %>% .$mean,
+                           stringsAsFactors = FALSE)
+names(res_forecast) <- c('CaseSequence', 'YYYY-MMM', 'KWH')
+
+
+write.xlsx(rbind(res, res_forecast), 
+           'ResidentialCustomerForecastLoad-624_with_Forecast.xlsx', 
+           'ResidentialCustomerForecastLoad',
+           row.names = FALSE)
+```
+
+
+# Part C
+
+## Load Data
+```{r load data part c, warning=FALSE}
+wf_p1 <- import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/PROJECT_1/Waterflow_Pipe1.xlsx', 
+                col_types = c('date', 'numeric'))
+wf_p2 <- import('https://raw.githubusercontent.com/oggyluky11/DATA624-SPRING-2021/main/PROJECT_1/Waterflow_Pipe2.xlsx', 
+                col_types = c('date', 'numeric'))
+
+```
+
+## Aggregate `wf_p1` Based on Hour
+```{r message=FALSE}
+wf_p1_mod <- wf_p1 %>%
+  mutate(`Date Time` = round(`Date Time`, 'hours') %>% as.POSIXct()) %>%
+  group_by(`Date Time`) %>%
+  summarise(WaterFlow = mean(WaterFlow))
+wf_p1_mod
+```
+
+
+
+## Sum Up `wf_p1` and `wf_p2` WaterFlow Readings
+```{r aggreation part c, message=FALSE}
+wf_p <- wf_p1_mod %>%
+  rbind(wf_p2) %>%
+  group_by(`Date Time`) %>%
+  summarise(WaterFlow = sum(WaterFlow))
+wf_p %>% arrange(desc(`Date Time`))
+```
+
+
+## Observation on Data
+  1. Slightly decreasing trend is observed, decreasing ACF that above critical limit justified trend effect.
+  
+  2. No obvious seasonality is presented according to ACF and PACF;
+  
+  3. No significant outliners is observed;
+  
+  3. The data is non-stationary, differencing is needed in the next step.
+```{r observation on data part c}
+wf_ts <- ts(wf_p %>% select(WaterFlow), frequency = 24)
+
+ggtsdisplay(wf_ts, 
+            main = 'ggtsdisplay: Water Flow Readings from Oct 23rd to Dec 3rd of Year 2015') 
+```
+
+## Data Transformation
+  1. Box-cox is performed to stablize variation.
+  
+  2. first order differecing is perfromed.
+  
+  3. The unit root test shows P-value less than 0.05, demostrating staionary.
+```{r data transformation part c}
+wf_ts_mod <- BoxCox(wf_ts, BoxCox.lambda(wf_ts)) %>%
+  diff()
+
+wf_ts_mod %>%
+  ur.kpss() %>%
+  summary()
+```
+
+## Observation on Transformed Data
+  1. Trend effect is eliminated after differencing; Modeling with ARIMA is applicable with difference factor d = 1 and seasonal difference factor D = 0;
+  
+  2. Decreasing seasonal lags in PACF and stable seasonal lags within critical limit in ACF hints AR factor p = 0 and MA factor q >= 1;
+  
+  3. Multiple spikes in non-seasonal lags in ACF and stable non-seasonal lags within critcal limit in PACF hints seasonal AR factor P >= 1 and seasonal MA factor Q = 0;
+  
+  3. Suggested model: ARIMA(0,1,>=1)(>=1,0,0)[24].
+```{r observation on transformed data pact 3}
+ggtsdisplay(wf_ts_mod,
+            main = 'ggtsdisplay: Water Flow Readings from Oct 23rd to Dec 3rd of Year 2015 (Transformed)')
+
+```
+
+## Build ARIMA Model
+The auto arima function verifies the claim that Suggested models are ARIMA(0,1,>=1)(>=1,0,0)[24]. The Q, p are both estimated to be 1.
+
+Final Model: **ARIMA(0,1,1)(1,0,0)[24] **.
+```{r wf auto ARIMA model}
+wf_ARIMA <- auto.arima(wf_ts, lambda = BoxCox.lambda(wf_ts), approximation = FALSE)
+wf_ARIMA
+```
+
+## Forecast
+One weeks' forecast
+```{r wf forecast}
+wf_ARIMA %>%
+  forecast(h=24*7) %>%
+  autoplot() +
+  labs(title = "Forecast for one weeks' Flow Readings",
+       x = 'Hours', 
+       y = 'WaterFlow Reading') 
+
+
+```
+
+
+## Export Forecast to xlsx
+```{r export forecast part c}
+wf_forecast <- wf_ARIMA %>% forecast(h=24*7) %>% .$mean %>%
+  data.frame() %>%
+  cbind(seq(max(wf_p$`Date Time`) + 60*60,max(wf_p$`Date Time`) + 60*60*24*7,by = 60*60))
+      
+names(wf_forecast) <- c('WaterFlow', 'Date Time')
+wf_forecast <- wf_forecast %>% select('Date Time', 'WaterFlow')
+
+wf_forecast
+write.xlsx(wf_forecast, 
+           'Waterflow_Forecast.xlsx', 
+           'Waterflow_Forecast',
+           row.names = FALSE)
+```
