@@ -1,0 +1,479 @@
+---
+title: "DATA 624 - HOMEWORK 8"
+author: "Fan Xu"
+date: "4/25/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  #html_notebook: default
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(missForest)
+library(corrplot)
+```
+
+
+# Question 7.2
+
+
+**`Friedman (1991)` introduced several benchmark data sets create by simulation. One of these simulations used the following nonlinear equation to create data:**
+
+<center>$$y=10\sin (\pi x_{1}x_{2})+20(x_{3}-0.5)^2+10x_{4}+5x_{5}+N(0,\sigma ^2)$$</center>
+
+
+**where the x values are random variables uniformly distributed between [0, 1] (there are also 5 other non-informative variables also created in the simulation). The package `mlbench` contains a function called `mlbench.friedman1` that simulates these data:**
+
+```{r Q7.2 data1}
+library(mlbench)
+set.seed(200)
+trainingData <- mlbench.friedman1(200, sd = 1)
+## We convert the 'x' data from a matrix to a data frame
+## One reason is that this will give the columns names.
+trainingData$x <- data.frame(trainingData$x)
+## Look at the data using
+featurePlot(trainingData$x, trainingData$y)
+## or other methods.
+
+## This creates a list with a vector 'y' and a matrix
+## of predictors 'x'. Also simulate a large test set to
+## estimate the true error rate with good precision:
+testData <- mlbench.friedman1(5000, sd = 1)
+testData$x <- data.frame(testData$x)
+```
+
+
+**Tune several models on these data. For example:**
+```{r Q7.2 data2}
+#library(caret)
+set.seed(200)
+knnModel <- train(x = trainingData$x,
+                  y = trainingData$y,
+                  method = "knn",
+                  preProc = c("center", "scale"),
+                  tuneLength = 10)
+knnModel
+```
+
+
+```{r Q7.2 data3}
+knnPred <- predict(knnModel, newdata = testData$x)
+## The function 'postResample' can be used to get the test set
+## perforamnce values
+knn_metrics <- postResample(pred = knnPred, obs = testData$y)
+knn_metrics
+```
+
+**Which models appear to give the best performance? Does MARS select the informative predictors (those named X1–X5)?**
+
+
+
+**Answer:**
+
+## SVM-Linear
+
+The final model trained by linear SVM is epsilon = 0.1  cost C = 1 with RMSE 2.7633860 & R2 0.6973384
+```{r SVM-Linear}
+set.seed(200)
+SVMLinearMod <- train(x = trainingData$x,
+                      y = trainingData$y,
+                      method = "svmLinear",
+                      preProc = c("center", "scale"),
+                      tuneLength = 14,
+                      trControl = trainControl(method = "cv"))
+SVMLinearMod
+SVMLinearMod$finalModel
+
+SVMLinearPred <- predict(SVMLinearMod, newdata = testData$x)
+SVMLinear_metrics <- postResample(pred = SVMLinearPred, obs = testData$y)
+SVMLinear_metrics
+```
+
+## SVM-Radial
+
+The final model trained by Radial SVM is epsilon = 0.1  cost C = 8, sigma =  0.0629932410345396 with RMSE 2.0541197 & R2 0.8290353
+```{r SVM-Radial}
+set.seed(200)
+SVMRadialMod <- train(x = trainingData$x,
+                      y = trainingData$y,
+                      method = "svmRadial",
+                      preProc = c("center", "scale"),
+                      tuneLength = 14,
+                      trControl = trainControl(method = "cv"))
+SVMRadialMod
+SVMRadialMod$finalModel
+
+SVMRadialPred <- predict(SVMRadialMod, newdata = testData$x)
+SVMRadial_metrics <- postResample(pred = SVMRadialPred, obs = testData$y)
+SVMRadial_metrics
+```
+
+
+
+## SVM-Polynomial
+
+The final model trained by Polynomial SVM is epsilon = 0.1  cost C = 0.5, degree =  3  scale =  0.1  offset =  1 with RMSE 2.0564650 & R2 0.8310884
+```{r SVM-Poly}
+set.seed(200)
+SVMPolyMod <- train(x = trainingData$x,
+                    y = trainingData$y,
+                    method = "svmPoly",
+                    preProc = c("center", "scale"),
+                    tuneLength = 4,
+                    trControl = trainControl(method = "cv"))
+SVMPolyMod
+SVMPolyMod$finalModel
+
+SVMPolyPred <- predict(SVMPolyMod, newdata = testData$x)
+SVMPoly_metrics <- postResample(pred = SVMPolyPred, obs = testData$y)
+SVMPoly_metrics
+```
+
+## MARS
+The final MARS model is nprune = 14 and degree = 2, with RMSE 1.1722635 & R2 0.9448890. MARS selected 14 of 18 terms, and 5 of 10 predictors, which are X1, X4, X2, X5 and X3 orded by variable importance.
+```{r MARS}
+set.seed(200)
+MARSMod <- train(x = trainingData$x,
+                 y = trainingData$y,
+                 method ='earth',
+                 tuneGrid = expand.grid(.degree = 1:2, 
+                                        .nprune = 2:38),
+                 trControl = trainControl(method = "cv"))
+
+MARSMod
+MARSMod$finalModel
+MARSModPred <- predict(MARSMod, newdata = testData$x)
+MARS_metrics <- postResample(pred = MARSModPred, obs = testData$y)
+MARS_metrics
+```
+
+## Neural Networks
+The final neural network model is size = 5, decay = 0.07, with RMSE 2.2480475 & R2 0.8031027.
+```{r NN}
+#remove predictors with high correlation, however find that there are no significant correlation between each pair of predictors.
+set.seed(200)
+tooHigh <- findCorrelation(cor(trainingData$x), cutoff = .75)
+tooHigh
+
+NeuralNetMod <- train(x = trainingData$x,
+                      y = trainingData$y,
+                      method ='avNNet',
+                      preProc = c("center", "scale"),
+                      tuneGrid = expand.grid(.decay = seq(0.01,0.1,0.01), 
+                                             .size = c(1:10),
+                                             .bag = FALSE),
+                      trControl = trainControl(method = "cv"),
+                      trace = FALSE,
+                      linout =TRUE#,
+                      #MaxNWts = 10 * (ncol(trainingData$x) + 1) + 10 + 1,
+                      #maxit = 500
+                      )
+NeuralNetMod
+NeuralNetModPred <- predict(NeuralNetMod, newdata = testData$x)
+NeuralNet_metrics <- postResample(pred = NeuralNetModPred, obs = testData$y)
+NeuralNet_metrics
+```
+
+## Model Comparison
+
+The best model selected by both RMSE & R2 is MARS.
+```{r}
+rbind(knn_metrics,
+      SVMLinear_metrics,
+      SVMRadial_metrics,
+      SVMPoly_metrics,
+      MARS_metrics,
+      NeuralNet_metrics) %>%
+  data.frame() %>%
+  arrange(RMSE)
+```
+
+
+# Question 7.5
+**Exercise 6.3 describes data for a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several nonlinear regression models.**
+
+### Load Data
+```{r Q7.5 load data}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+
+chem_predictors <- ChemicalManufacturingProcess %>% select(-Yield)  %>% as.matrix()
+chem_response <- ChemicalManufacturingProcess %>% select(Yield) %>% as.matrix()
+```
+
+The matrix `processPredictors` contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. `yield` contains the percent yield for each run.
+
+
+### Data Imputation
+Imputd mssing values using `missFroest` package.
+
+```{r Q7.5 missing data imputation, warning=FALSE}
+set.seed(200)
+imp_chem_predictors <- missForest(chem_predictors)$ximp
+```
+
+### train_test_split
+```{r Q7.5 Train Test Split}
+set.seed(200)
+
+train_index <- createDataPartition(chem_response,
+                                   p = 0.75,
+                                   list = FALSE,
+                                   times = 1) %>%
+  as.vector()
+
+data_train_X <- imp_chem_predictors[train_index,] 
+data_train_Y <- chem_response[train_index,]
+data_test_X <- imp_chem_predictors[-train_index,] 
+data_test_Y <-chem_response[-train_index,]
+
+```
+
+
+## (a)
+**Which nonlinear regression model gives the optimal resampling and test set performance?**
+
+**Answer:**
+The optimal model is radial SVM. See below:
+
+### KNN
+```{r 7.5a knn}
+set.seed(200)
+# predictors with zero variance are removed
+knnModel <- train(x = data_train_X[,-nearZeroVar(data_train_X)],
+                  y = data_train_Y,
+                  method = "knn",
+                  preProc = c("center", "scale"),
+                  tuneLength = 10)
+knnModel
+knnPred <- predict(knnModel, newdata = data_test_X[,-nearZeroVar(data_train_X)])
+knn_metrics <- postResample(pred = knnPred, obs = data_test_Y)
+knn_metrics
+```
+
+
+## SVM-Linear
+```{r 7.5a SVM-Linear}
+set.seed(200)
+SVMLinearMod <- train(x = data_train_X,
+                      y = data_train_Y,
+                      method = "svmLinear",
+                      preProc = c("center", "scale"),
+                      tuneLength = 14,
+                      trControl = trainControl(method = "cv"))
+SVMLinearMod
+SVMLinearMod$finalModel
+
+SVMLinearPred <- predict(SVMLinearMod, newdata = data_test_X)
+SVMLinear_metrics <- postResample(pred = SVMLinearPred, obs = data_test_Y)
+SVMLinear_metrics
+```
+
+## SVM-Radial
+```{r 7.5a SVM-Radial}
+set.seed(200)
+SVMRadialMod <- train(x = data_train_X,
+                      y = data_train_Y,
+                      method = "svmRadial",
+                      preProc = c("center", "scale"),
+                      tuneLength = 14,
+                      trControl = trainControl(method = "cv"))
+SVMRadialMod
+SVMRadialMod$finalModel
+
+SVMRadialPred <- predict(SVMRadialMod, newdata = data_test_X)
+SVMRadial_metrics <- postResample(pred = SVMRadialPred, obs = data_test_Y)
+SVMRadial_metrics
+```
+
+
+
+## SVM-Polynomial
+```{r 7.5a SVM-Poly}
+set.seed(200)
+SVMPolyMod <- train(x = data_train_X,
+                    y = data_train_Y,
+                    method = "svmPoly",
+                    preProc = c("center", "scale"),
+                    tuneLength = 4,
+                    trControl = trainControl(method = "cv"))
+SVMPolyMod
+SVMPolyMod$finalModel
+
+SVMPolyPred <- predict(SVMPolyMod, newdata = data_test_X)
+SVMPoly_metrics <- postResample(pred = SVMPolyPred, obs = data_test_Y)
+SVMPoly_metrics
+```
+
+## MARS
+```{r 7.5a MARS}
+set.seed(200)
+MARSMod <- train(x = data_train_X,
+                 y = data_train_Y,
+                 method ='earth',
+                 tuneGrid = expand.grid(.degree = 1:2, 
+                                        .nprune = 2:38),
+                 trControl = trainControl(method = "cv"))
+
+MARSMod
+MARSMod$finalModel
+MARSModPred <- predict(MARSMod, newdata = data_test_X)
+MARS_metrics <- postResample(pred = MARSModPred, obs = data_test_Y)
+MARS_metrics
+```
+
+
+
+## Neural Networks
+
+```{r 7.5a NN}
+#remove predictors with high correlation & zero variance
+set.seed(200)
+tooHigh <- findCorrelation(cor(data_train_X), cutoff = .75)
+zeroVar <- nearZeroVar(data_train_X)
+data_train_X_nnet <- data_train_X[,-c(tooHigh, zeroVar)]
+data_test_X_nnet <- data_test_X[,-c(tooHigh, zeroVar)]
+
+NeuralNetMod <- train(x = data_train_X_nnet,
+                      y = data_train_Y,
+                      method ='avNNet',
+                      preProc = c("center", "scale"),
+                      tuneGrid = expand.grid(.decay = seq(0.01,0.1,0.01), 
+                                             .size = c(1:10),
+                                             .bag = FALSE),
+                      trControl = trainControl(method = "cv"),
+                      linout = TRUE,
+                      trace = FALSE#,
+                      #MaxNWts = 10 * (ncol(data_train_X_nnet) + 1) + 10 + 1,
+                      #maxit = 500
+                      )
+NeuralNetMod
+NeuralNetModPred <- predict(NeuralNetMod, newdata = data_test_X_nnet)
+NeuralNet_metrics <- postResample(pred = NeuralNetModPred, obs = data_test_Y)
+NeuralNet_metrics
+```
+
+
+
+
+## Model Comparison
+
+The best model selected by both RMSE & R2 is Radial SVM.
+```{r}
+rbind(knn_metrics,
+      SVMLinear_metrics,
+      SVMRadial_metrics,
+      SVMPoly_metrics,
+      MARS_metrics,
+      NeuralNet_metrics) %>%
+  data.frame() %>%
+  arrange(RMSE)
+```
+
+## (b)
+**Which predictors are most important in the optimal nonlinear regression model? Do either the biological or process variables dominate the list? How do the top ten important predictors compare to the top ten predictors from the optimal linear model??**
+
+
+### Top Impoartant Predictors
+
+**Anwer:**
+  1) The tap 10 most important of the optimal nonlinear model (here the radial SVM model).
+  
+  2) Manufacturing Process variables domiate the list.
+  
+  3) The top 10 important predoctors selected by the radial SVM and Elastic Net model are the same.
+```{r 7.5a VarImp}
+SVMRadial_vapImp <- varImp(SVMRadialMod)
+SVMRadial_top10_Imp <- SVMRadial_vapImp$importance %>% 
+  arrange(desc(Overall)) %>%
+  top_n(10, Overall)
+
+SVMRadial_top10_Imp
+```
+
+
+### Optimal linear model in #6.3
+```{r 6.3 optimal model}
+set.seed(200)
+enetGrid <- data.frame(.lambda = seq(0, 3, length = 50),
+                       .fraction = seq(0.01, 1, length = 50))
+enetTune <- train(data_train_X, data_train_Y,
+                   method = 'enet',
+                   tuneGrid = enetGrid,
+                   trControl = trainControl(method = "cv"),
+                   preProc = c('center', 'scale'))
+
+
+enet_vapImp <- varImp(enetTune)
+enet_Top10_Imp <- enet_vapImp$importance %>% 
+  arrange(desc(Overall)) %>%
+  top_n(10, Overall)
+enet_Top10_Imp
+
+```
+
+
+### Comparison
+```{r}
+cbind(SVMRadial_top10_Imp, enet_Top10_Imp) %>%
+  data.frame() %>%
+  rename('SVM_Radial_VIF' = 'Overall', 'ENET_VIF' = 'Overall.1')
+
+```
+
+## (c)
+**Explore the relationships between the top predictors and the response for the predictors that are unique to the optimal nonlinear regression model. Do these plots reveal intuition about the biological or process predictors and their relationship with yield?**
+
+**Answer:**
+As observed from the correlation plot, all biological material (BM) predictors have postive correlationship with the response variable Yield, while the manufacturing process (MP) predictors are overallly have overall smaller positive correlation with Yield than those of BMs, or have negative correslation with Yield. In future runs of manufacturing process, those individual MP predictors with small absolute value of correlation values can be further analysed and improvement actions can be taken to such MP steps in order to increase the yield so as to boost revenue.
+
+```{r}
+top_pred <- SVMRadial_top10_Imp %>%
+  rownames_to_column() %>%
+  spread(key = rowname, value = Overall)
+
+
+cor_df <- data.frame(imp_chem_predictors) %>%
+  select(names(top_pred)) %>%
+  cbind(chem_response) 
+
+
+names(cor_df) <- names(cor_df) %>%
+  str_replace('BiologicalMaterial', 'BM') %>%
+  str_replace('ManufacturingProcess', 'MP')
+
+cor_df <- cor(cor_df)
+
+corrplot(cor_df)
+
+```
