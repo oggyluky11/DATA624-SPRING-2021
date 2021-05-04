@@ -1,0 +1,382 @@
+---
+title: "DATA 624 - HOMEWORK 9"
+author: "Fan Xu"
+date: "5/4/2021"
+output:
+  rmdformats::readthedown:
+    code_folding: hide
+    df_print: paged
+    highlight: tango
+    number_sections: no
+    smooth_scroll: yes
+    theme: united
+    toc_collapsed: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_collapsed: yes
+    toc_float: yes
+  #html_notebook: default
+  pdf_document:
+    extra_dependencies:
+    - geometry
+    - multicol
+    - multirow
+  word_document:
+    toc: yes
+    toc_depth: '5'
+theme: lumen
+number_sections: yes
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Load Package
+```{r load package, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(gbm)
+library(Cubist)
+library(missForest)
+```
+
+# Question 8.1
+**Recreate the simulated data from Exercise 7.2:**
+
+
+```{r q8.1 question}
+library(mlbench)
+set.seed(200)
+simulated <- mlbench.friedman1(200, sd = 1)
+data_x <- simulated$x
+data_y <- simulated$y
+simulated <- cbind(simulated$x, simulated$y)
+simulated <- as.data.frame(simulated)
+colnames(simulated)[ncol(simulated)] <- "y"
+```
+
+
+## (a)
+**Fit a random forest model to all of the predictors, then estimate the variable importance scores:**
+```{r q8.1 a question}
+library(randomForest)
+#library(caret)
+model1 <- randomForest(y ~ ., data = simulated,
+                       importance = TRUE,
+                       ntree = 1000)
+rfImp1 <- varImp(model1, scale = FALSE)
+```
+
+**Did the random forest model significantly use the uninformative predictors (V6 - V10)?**
+
+**Answer:**
+No, the RF model did not significantly use V6 - V10, as shown from the variable importance scores that the top 5 vairiables are V1 - v5.
+```{r q8.1 a answer}
+rfImp1
+
+```
+
+
+## (b)
+**Now add an additional predictor that is highly correslated with one of the informative predictors. For example:**
+
+```{r q8.1 b question}
+simulated$duplicate1 <- simulated$V1 + rnorm(200)*.1
+cor(simulated$duplicate1, simulated$V1)
+
+```
+
+**Fit another random forest model to these data. Did the importance score for V1 change? What happens when you add another predictor that is also highly correslated with V1?**
+
+
+**Anwer:**
+The importance score for V1 changed. When there is another predictor that is highly correlated to v1, the importance of V1 is shared by the itself and the newly added duplicated one. The importance score of V1 in model 1 is almost the same as the sum of the imprtance scores of V1 and duplicate1 in model 2.
+```{r q8.1 b answer}
+model2 <- randomForest(y ~ ., data = simulated,
+                       importance = TRUE,
+                       ntree = 1000)
+rfImp2 <- varImp(model2, scale = FALSE)
+rfImp2 %>% arrange(desc(Overall))
+```
+
+## (c)
+**Use the `cforest` function in the party package to fit a random forest model using conditional inference trees. The party package function varimp can calculate predictor importance. The conditional argument of that function toggles between the traditional importance measure and the modified version described in Strobl et al. (2007). Do these importances show the same pattern as the traditional random forest model?**
+
+**Answer:**
+The importances show similar patterns between the conditional inference tree model (model 3) and the traditional random forest model (model 1). There is still difference between the score of V3, in traditional RF model, V3 is one of the top 5 variable, however in the conditional inference tree model, it shows very small importance.
+
+```{r q8.1 c answer1}
+#remove the column duplicate1 from (b)
+simulated = subset(simulated, select = -duplicate1)
+simulated
+```
+
+```{r q8.2 c answer2}
+model3 <- cforest(y ~ ., data = simulated)
+
+compare1 <- cbind(data.frame(varImp(model3)),
+      VarImp_RF = rfImp1$Overall) %>%
+  rownames_to_column() %>%
+  rename(VarImp_CF = Overall,
+         Variable = rowname) 
+compare1 %>%
+  gather(key = 'Model', value = 'VarImp', -Variable) %>%
+  ggplot(aes(x=reorder(Variable, desc(Variable %>% str_remove('V') %>% as.integer())), y=VarImp, fill=Model)) +
+  geom_bar(stat="identity") +
+  facet_grid(~Model) +
+  coord_flip() +
+  ggtitle('Variable Importance Scores Between Conditional Inference Tree Model and Traditional RF Model') +
+  xlab('Variable')
+```
+
+## (d)
+
+
+
+**Repeat this process with different tree models, such as boosted trees and Cubist. Does the same pattern occur?**
+
+**Answer:**
+Similar patterns occurs for all tree models. although the patterns are not exactly the same, it shows that tree models are good at identify informative variables.
+```{r q8.2 d answer, message=FALSE, warning=FALSE}
+model4 <- gbm(y ~., simulated, distribution = 'gaussian', n.trees = 1000)
+VarImp_GBM <- varImp(model4,numTrees = 1000)
+
+
+model5 <- cubist(simulated[-11], simulated$y)
+VarImp_Cubist = varImp(model5)
+
+VarImp_GBM %>%
+  rownames_to_column() %>%
+  arrange(rowname %>% str_remove('V') %>% as.integer()) %>%
+  rename(VarImp_GBM = Overall) %>%
+  left_join(VarImp_Cubist %>%
+              rownames_to_column() %>%
+              arrange(rowname %>% str_remove('V') %>% as.integer()) %>%
+              rename(VarImp_Cubist = Overall)) %>%
+  rename(Variable = rowname) %>% 
+  left_join(compare1) %>%
+  gather(key = 'Model', value = 'VarImp', -Variable) %>%
+  ggplot(aes(x=reorder(Variable, desc(Variable %>% str_remove('V') %>% as.integer())), y=VarImp, fill=Model)) +
+  geom_bar(stat="identity") +
+  facet_grid(~Model, scales="free") +
+  coord_flip() +
+  ggtitle('Variable Importance Scores Across Models') +
+  xlab('Variable') 
+
+```
+
+
+# Question 8.2
+**Use a simulation to show tree bias with different granularities.**
+
+**Answer:**
+The simulation below show that the more granular the variable is, the higher the importance score, which reflects selection bias of tree models.
+
+## Create 10 variables with different granularities
+```{r q8.2 1}
+data <- NULL
+
+for(i in 1:10){
+  data = cbind(data, sample(1:(i^5), 10000, replace = TRUE))
+}
+
+data <- data %>% 
+  as.data.frame() %>%
+  mutate(y = rowSums(data)+ sample(-5:5,1))
+
+
+str(data)
+
+```
+
+## build a regression tree 
+```{r q8.2 2}
+model_bias <- rpart(y ~ ., data)
+model_bias
+```
+
+## Variable Importance Score vs # of Distinct Values
+```{r q8.2 3, message=FALSE, warning=FALSE}
+data %>% 
+  select(-y) %>%
+  summarise_all(n_distinct) %>%
+  gather(key = 'Variable', value = 'Distinct_Cnt') %>%
+  left_join(varImp(model_bias) %>%
+              rownames_to_column() %>%
+              rename(Variable = rowname,
+                     VarImp = Overall)) %>%
+  select(-Distinct_Cnt, Distinct_Cnt) %>%
+  arrange(desc(VarImp), desc(Distinct_Cnt))
+```
+
+# Question 8.3
+**In stochastic gradient boosting the bagging fraction and learning rate will govern the construction of the trees as they are guided by the gradient. Although the optimal values of these parameters should be obtained through the tuning process, it is helpful to understand how the magnitudes of these parameters affect magnitudes of variable importance. Figure 8.24 provides the variable importance plots for boosting using two extreme values for the bagging fraction (0.1 and 0.9) and the learning rate (0.1 and 0.9) for the solubility data. The left-hand plot has both parameters set to 0.1, and the right-hand plot has both set to 0.9:**
+
+## (a)
+**Why does the model on the right focus its importance on just the first few of predictors, whereas the model on the left spreads importance across more predictors?**
+
+**Answer:**
+1. The bagging fraction controls the sample size in each iteration, as the bagging fraction increases, the sample size gets larger and gets closer to the population size, therefore the randomness gets weaker during the learning process, making the variables with higher importance are more possible to be chosen in the splits in each iteration. Hence, as the bagging fraction increases, the variables with higher importance will get even higher scores, and vice versa.
+
+2. The learning rate is used to shrink the impact of each iteration of learning to the intial weak learner. The higher the learning rate, the faster the model parameters converage to the optimal values constrainted by the loss function, and therefore less 'chances' the variables to be used in splits. Hence, the variables with lower importance will get even less chances to be used in splits and has importance score to be calcualted as the learning rate increase, and vice versa.
+
+## (b)
+**Which model do you think would be more predictive of other samples?**
+The model with both the bagging fraction and the learning rate as 0.1 (the model on the left) would be more predictive of other samples. As more the model consists greate randomness therefore bias is reduced, and over-fit is limited.
+
+## (c)
+**How would increasing interaction depth affect the slope of predictor importance for either model in Fig. 8.24?**
+The interaction depth (the tree depth) increases, more variables are used in splits, therefore overall speaking the slope of the variable importance scores will be more flattened. However as the tree depth increases, the risk of over-fitting increase as well.
+
+
+# Questions 8.7
+**Refer to Exercises 6.3 and 7.5 which describe a chemical manufacturing process. Use the same data imputation, data splitting, and pre-processing steps as before and train several tree-based models:**
+
+### Load Data
+```{r Q8.7 load data}
+library(AppliedPredictiveModeling)
+data(ChemicalManufacturingProcess)
+
+chem_predictors <- ChemicalManufacturingProcess %>% select(-Yield)  %>% as.matrix()
+chem_response <- ChemicalManufacturingProcess %>% select(Yield) %>% as.matrix()
+```
+
+The matrix `processPredictors` contains the 57 predictors (12 describing the input biological material and 45 describing the process predictors) for the 176 manufacturing runs. `yield` contains the percent yield for each run.
+
+
+### Data Imputation
+Imputd mssing values using `missFroest` package.
+
+```{r Q8.7 missing data imputation, warning=FALSE}
+set.seed(200)
+imp_chem_predictors <- missForest(chem_predictors)$ximp
+```
+
+### train_test_split
+```{r Q8.7 Train Test Split}
+set.seed(200)
+
+train_index <- createDataPartition(chem_response,
+                                   p = 0.75,
+                                   list = FALSE,
+                                   times = 1) %>%
+  as.vector()
+
+data_train_X <- imp_chem_predictors[train_index,] 
+data_train_Y <- chem_response[train_index,]
+data_test_X <- imp_chem_predictors[-train_index,] 
+data_test_Y <-chem_response[-train_index,]
+```
+
+## (a)
+**Which tree-based regression model gives the optimal resampling and test set performance?**
+
+### Single Tree
+```{r 8.7a sginle tree CART}
+set.seed(200)
+
+Model_Tree <- train(x = data_train_X,
+                  y = data_train_Y,
+                  method = "rpart",
+                  tuneLength = 10,
+                  trControl = trainControl(method = 'cv'))
+Model_Tree
+Model_Tree_Pred <- predict(Model_Tree, newdata = data_test_X)
+Model_Tree_metrics <- postResample(pred = Model_Tree_Pred, obs = data_test_Y)
+Model_Tree_metrics
+```
+
+### Random Forest
+```{r 8.7b rf}
+set.seed(200)
+
+Model_RF <- train(x = data_train_X,
+                  y = data_train_Y,
+                  method = "rf",
+                  tuneLength = 10,
+                  trControl = trainControl(method = 'cv'))
+Model_RF
+Model_RF_Pred <- predict(Model_RF, newdata = data_test_X)
+Model_RF_metrics <- postResample(pred = Model_RF_Pred, obs = data_test_Y)
+Model_RF_metrics
+```
+
+
+### Gradient Boosting Machine
+```{r 8.7b gbm}
+set.seed(200)
+
+Model_GBM <- train(x = data_train_X,
+                  y = data_train_Y,
+                  method = "gbm",
+                  tuneGrid = expand.grid(.interaction.depth = seq(1, 7, by = 2),
+                              .n.trees = seq(100, 1000, by = 50),
+                              .shrinkage = c(0.01, 0.1),
+                              .n.minobsinnode = c(5,10)),
+                  tuneLength = 10,
+                  trControl = trainControl(method = 'cv'),
+                  verbose = FALSE)
+Model_GBM
+Model_GBM_Pred <- predict(Model_GBM, newdata = data_test_X)
+Model_GBM_metrics <- postResample(pred = Model_GBM_Pred, obs = data_test_Y)
+Model_GBM_metrics
+```
+### Cubist
+```{r 8.7b cubist}
+set.seed(200)
+
+Model_Cubist <- train(x = data_train_X,
+                  y = data_train_Y,
+                  method = "cubist",
+                  trControl = trainControl(method = 'cv'))
+Model_Cubist
+Model_Cubist_Pred <- predict(Model_Cubist, newdata = data_test_X)
+Model_Cubist_metrics <- postResample(pred = Model_Cubist_Pred, obs = data_test_Y)
+Model_Cubist_metrics
+```
+
+
+### Model Comparison
+
+The best model selected by both RMSE & R2 is Cubist.
+```{r q8.7 model comparison}
+rbind(Model_Tree_metrics,
+      Model_RF_metrics,
+      Model_GBM_metrics,
+      Model_Cubist_metrics) %>%
+  data.frame() %>%
+  arrange(RMSE)
+```
+
+## (b)
+**Which predictors are most important in the optimal tree-based regression model? Do either the biological or process variables dominate the list? How do the top 10 important predictors compare to the top 10 predictors from the optimal linear and nonlinear models?**
+
+**Answer:**
+1. The most imporant variable in the Cubist model is `ManufacturingProcess17`. 
+
+2. The model is domiated by the process variables (8 of the 10 top are process variables).
+
+3. For both the optimal linear and non-linear models in the previous homeworks, the Manufacturing Process variables domiate the VarImp list. all the linear, non-linear and tree model shows similar pattern.
+
+```{r q8.7 b}
+varImp(Model_Cubist)
+```
+
+## (c)
+**Plot the optimal single tree with the distribution of yield in the terminal nodes. Does this view of the data provide additional knowledge about the biological or process predictors and their relationship with yield?**
+
+**Answer:**
+Yes. The view also provided insight that most of the splits are made by manualfacturing process variables.
+```{r q8.7 c}
+rpart.plot(Model_Tree$finalModel)
+
+```
